@@ -1,0 +1,61 @@
+name: govbot-bluesky
+
+on:
+  schedule:
+    # Every 6 hours. Adjust to taste; legislatures don't move that fast.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:  # manual trigger from the Actions tab
+
+permissions:
+  contents: write  # needed to commit state/posted.json back
+
+concurrency:
+  group: govbot-bluesky
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: pip install requests
+
+      - name: Install govbot
+        run: |
+          sh -c "$(curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh)"
+          # Make sure it's on PATH for subsequent steps.
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run govbot pipeline
+        # Requires a govbot.yml committed at the repo root.
+        # `govbot` (no args) runs the full pipeline: clone → tag → build RSS into docs/.
+        run: govbot
+
+      - name: Post new items to Bluesky
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          POST_LIMIT: "5"
+        run: python scripts/post_to_bluesky.py
+
+      - name: Commit state changes
+        run: |
+          git config user.name  "govbot-bluesky[bot]"
+          git config user.email "govbot-bluesky[bot]@users.noreply.github.com"
+          git add state/posted.json docs/ || true
+          if git diff --cached --quiet; then
+            echo "No state or feed changes to commit."
+          else
+            git commit -m "chore: update posted state and feeds [skip ci]"
+            git push
+          fi
