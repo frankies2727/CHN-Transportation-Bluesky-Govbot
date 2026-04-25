@@ -4,7 +4,7 @@ on:
   schedule:
     # Every 6 hours. Adjust to taste; legislatures don't move that fast.
     - cron: "0 */6 * * *"
-  workflow_dispatch:  # manual trigger from the Actions tab
+  workflow_dispatch: {}  # manual trigger from the Actions tab
 
 permissions:
   contents: write  # needed to commit state/posted.json back
@@ -12,6 +12,10 @@ permissions:
 concurrency:
   group: govbot-bluesky
   cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   run:
@@ -30,10 +34,9 @@ jobs:
         run: pip install requests
 
       - name: Install govbot
-        shell: bash      
         run: |
-          sh -c "$(curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh)"
-          # Make sure it's on PATH for subsequent steps.
+          curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh -o /tmp/install-govbot.sh
+          bash /tmp/install-govbot.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run govbot pipeline
