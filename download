@@ -1,0 +1,15 @@
+# govbot's cloned datasets — these are huge and re-cloned on every run
+.govbot/
+data/
+legislation/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
