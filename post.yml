@@ -4,7 +4,7 @@ on:
   schedule:
     # Every 6 hours. Adjust to taste; legislatures don't move that fast.
     - cron: "0 */6 * * *"
-  workflow_dispatch: {}  # manual trigger from the Actions tab
+  workflow_dispatch:  # manual trigger from the Actions tab
 
 permissions:
   contents: write  # needed to commit state/posted.json back
