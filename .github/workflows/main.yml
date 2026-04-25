@@ -36,8 +36,19 @@ jobs:
       - name: Install govbot
         run: |
           curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh -o /tmp/install-govbot.sh
+          echo "===== install script contents ====="
+          cat /tmp/install-govbot.sh
+          echo "===== running install ====="
           bash /tmp/install-govbot.sh
+          echo "===== where did it go? ====="
+          which govbot || true
+          ls -la "$HOME/.local/bin" 2>/dev/null || echo "no ~/.local/bin"
+          ls -la "$HOME/.cargo/bin" 2>/dev/null || echo "no ~/.cargo/bin"
+          ls -la /usr/local/bin/govbot 2>/dev/null || echo "not in /usr/local/bin"
+          find "$HOME" -name "govbot" -type f 2>/dev/null | head -5
+          echo "===== adding likely paths to GITHUB_PATH ====="
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Run govbot pipeline
         # Requires a govbot.yml committed at the repo root.
