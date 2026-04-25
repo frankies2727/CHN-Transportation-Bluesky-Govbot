@@ -33,27 +33,15 @@ jobs:
       - name: Install Python deps
         run: pip install requests
 
-      - name: Install govbot
+      - name: Install govbot and run pipeline
+        # We do install + run in one step so the updated PATH is in scope.
+        # Govbot installs itself to $HOME/.govbot/bin.
         run: |
-          curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh -o /tmp/install-govbot.sh
-          echo "===== install script contents ====="
-          cat /tmp/install-govbot.sh
-          echo "===== running install ====="
-          bash /tmp/install-govbot.sh
-          echo "===== where did it go? ====="
-          which govbot || true
-          ls -la "$HOME/.local/bin" 2>/dev/null || echo "no ~/.local/bin"
-          ls -la "$HOME/.cargo/bin" 2>/dev/null || echo "no ~/.cargo/bin"
-          ls -la /usr/local/bin/govbot 2>/dev/null || echo "not in /usr/local/bin"
-          find "$HOME" -name "govbot" -type f 2>/dev/null | head -5
-          echo "===== adding likely paths to GITHUB_PATH ====="
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Run govbot pipeline
-        # Requires a govbot.yml committed at the repo root.
-        # `govbot` (no args) runs the full pipeline: clone → tag → build RSS into docs/.
-        run: govbot
+          curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
+          export PATH="$HOME/.govbot/bin:$PATH"
+          govbot --version || true
+          # Run the full pipeline: clone → tag → build RSS into docs/
+          govbot
 
       - name: Post new items to Bluesky
         env:
