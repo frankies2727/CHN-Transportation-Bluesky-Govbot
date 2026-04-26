@@ -38,7 +38,7 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 BLUESKY_API = "https://bsky.social/xrpc"
 ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"  # fast + cheap
+ANTHROPIC_MODEL = "claude-haiku-4-5"  # fast + cheap
 
 # ---------------------------------------------------------------------------
 # Transportation keywords. Whole-word matching, case-insensitive.
