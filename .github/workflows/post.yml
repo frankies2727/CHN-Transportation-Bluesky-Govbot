@@ -4,16 +4,7 @@ on:
   schedule:
     # Every 6 hours.
     - cron: "0 */6 * * *"
-  workflow_dispatch:
-    inputs:
-      POST_LIMIT:
-        description: 'Maximum number of posts per run'
-        required: false
-        default: '3'
-      DRY_RUN:
-        description: 'Set to 1 for dry-run (only print, don’t post)'
-        required: false
-        default: '1'
+  workflow_dispatch: {} # adds a simple "Run workflow" button
 
 permissions:
   contents: write  # needed to commit state/posted.json back
