@@ -2,7 +2,7 @@ name: govbot-bluesky
 
 on:
   schedule:
-    # Every 6 hours. Adjust to taste; legislatures don't move that fast.
+    # Every 6 hours.
     - cron: "0 */6 * * *"
   workflow_dispatch: {}  # manual trigger from the Actions tab
 
@@ -33,15 +33,17 @@ jobs:
       - name: Install Python deps
         run: pip install requests
 
-      - name: Install govbot and run pipeline
-        # We do install + run in one step so the updated PATH is in scope.
-        # Govbot installs itself to $HOME/.govbot/bin.
+      - name: Install govbot, fetch & build feeds
+        # All in one step so PATH stays in scope.
+        # Manual pipeline: clone IL data → tag it → build RSS feeds into docs/
         run: |
           curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
           export PATH="$HOME/.govbot/bin:$PATH"
           govbot --version || true
-          # Run the full pipeline: clone → tag → build RSS into docs/
-          govbot
+          # Pull Illinois legislation data (change/add states here as you like)
+          govbot clone il
+          # Stream activity, tag it, and build RSS feeds into docs/
+          govbot logs | govbot tag | govbot build
 
       - name: Post new items to Bluesky
         env:
