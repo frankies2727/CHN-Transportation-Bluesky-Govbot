@@ -40,7 +40,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
           export PATH="$HOME/.govbot/bin:$PATH"
           govbot --version || true
-          govbot clone il
+          govbot clone il in
           govbot logs > bills.jsonl
           echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
 
