@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 """
-Post new govbot RSS items to Bluesky with AI summaries.
+Filter govbot's bills.jsonl for transportation-related Illinois bills,
+dedupe against state/posted.json, summarize with Claude, and post to Bluesky.
 
-- Scans docs/ for RSS feeds produced by `govbot build`.
-- Tracks posted GUIDs in state/posted.json (committed back to repo).
-- Summarizes each new item with Claude.
-- Posts to Bluesky with a clickable link facet.
-
-Env vars required:
-    BLUESKY_HANDLE        e.g. mybot.bsky.social
-    BLUESKY_APP_PASSWORD  app password (NOT main password)
-    ANTHROPIC_API_KEY     for summaries
+Env vars (required at post time):
+    BLUESKY_HANDLE
+    BLUESKY_APP_PASSWORD
+    ANTHROPIC_API_KEY     (optional — falls back to abstract if missing)
 
 Optional:
-    POST_LIMIT            max posts per run (default 5, prevents flooding)
+    POST_LIMIT            max posts per run (default 3)
     DRY_RUN               if "1", print what would be posted but don't post
 """
 
@@ -24,18 +20,16 @@ import os
 import re
 import sys
 import time
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
-from xml.etree import ElementTree as ET
 
 import requests
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS_DIR = ROOT / "docs"
+JSONL_PATH = ROOT / "bills.jsonl"
 STATE_FILE = ROOT / "state" / "posted.json"
-POST_LIMIT = int(os.environ.get("POST_LIMIT", "5"))
+
+POST_LIMIT = int(os.environ.get("POST_LIMIT", "3"))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
 BSKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "")
@@ -44,104 +38,129 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 BLUESKY_API = "https://bsky.social/xrpc"
 ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"  # fast + cheap for summaries
+ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"  # fast + cheap
+
+# ---------------------------------------------------------------------------
+# Transportation keywords. Whole-word matching, case-insensitive.
+# Add/remove as you like — these are conservative defaults focused on Illinois.
+# ---------------------------------------------------------------------------
+TRANSPORTATION_KEYWORDS = [
+    "transportation", "transit", "highway", "tollway", "roadway",
+    "expressway", "interstate", "bridge", "rail", "railroad", "railway",
+    "amtrak", "metra", "cta", "pace", "rta", "idot",
+    "bicycle", "bike lane", "pedestrian", "sidewalk", "crosswalk",
+    "vehicle", "automobile", "motor vehicle", "driver", "license plate",
+    "traffic", "speed limit", "tollbooth", "toll road", "parking",
+    "airport", "aviation", "freight",
+    "ev charging", "electric vehicle", "autonomous vehicle",
+]
+
+# Compile once. \b is word boundary; we lowercase both sides.
+_KEYWORD_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in TRANSPORTATION_KEYWORDS) + r")\b",
+    re.IGNORECASE,
+)
+
+MAX_POST = 290  # Bluesky's hard limit is 300 graphemes; stay under.
 
 
-@dataclass
-class FeedItem:
-    guid: str
-    title: str
-    link: str
-    description: str
-    pub_date: str
-    feed_name: str  # which RSS file it came from (used as a tag hint)
+# ---------------------------------------------------------------------------
+# Loading & normalizing bills
+# ---------------------------------------------------------------------------
 
-
-# ----------------------------- RSS parsing ----------------------------------
-
-def _text(elem: ET.Element | None) -> str:
-    return (elem.text or "").strip() if elem is not None else ""
-
-
-def parse_feed(path: Path) -> list[FeedItem]:
-    """Parse an RSS 2.0 file. Forgiving: we only require <item><title> + a stable id."""
-    try:
-        tree = ET.parse(path)
-    except ET.ParseError as e:
-        print(f"  ! skip {path.name}: {e}", file=sys.stderr)
+def load_bills(path: Path) -> list[dict]:
+    if not path.exists():
+        print(f"ERROR: {path} does not exist. Did `govbot logs` run?", file=sys.stderr)
         return []
-
-    root = tree.getroot()
-    items: list[FeedItem] = []
-    feed_name = path.stem
-
-    for item in root.iter("item"):
-        title = _text(item.find("title"))
-        link = _text(item.find("link"))
-        desc = _text(item.find("description"))
-        pub = _text(item.find("pubDate"))
-        guid = _text(item.find("guid")) or link or f"{feed_name}:{title}"
-
-        if not title:
-            continue
-
-        items.append(FeedItem(
-            guid=guid,
-            title=title,
-            link=link,
-            description=desc,
-            pub_date=pub,
-            feed_name=feed_name,
-        ))
-    return items
+    bills = []
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                bills.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    print(f"Loaded {len(bills)} records from {path.name}")
+    return bills
 
 
-def collect_new_items(seen: set[str]) -> list[FeedItem]:
-    if not DOCS_DIR.exists():
-        print(f"No docs/ directory found at {DOCS_DIR}; did `govbot build` run?")
-        return []
+def extract_fields(record: dict) -> dict | None:
+    """
+    Pull the fields we care about out of a govbot log record. Returns None if
+    the record doesn't look like a bill log entry we can use.
+    """
+    bill = record.get("bill") or {}
+    log = record.get("log") or {}
 
-    new: list[FeedItem] = []
-    feeds = sorted(p for p in DOCS_DIR.rglob("*") if p.suffix.lower() in {".xml", ".rss"})
-    print(f"Found {len(feeds)} feed file(s) in docs/")
+    identifier = bill.get("identifier") or record.get("id") or ""
+    title = bill.get("title") or ""
+    if not identifier or not title:
+        return None
 
-    for feed_path in feeds:
-        for item in parse_feed(feed_path):
-            if item.guid not in seen:
-                new.append(item)
+    abstracts = bill.get("abstracts") or []
+    abstract = ""
+    if abstracts and isinstance(abstracts, list):
+        first = abstracts[0]
+        if isinstance(first, dict):
+            abstract = first.get("abstract", "")
+        elif isinstance(first, str):
+            abstract = first
 
-    # Sort newest-first by pub_date when available; falls back to feed order.
-    def sort_key(it: FeedItem):
-        try:
-            from email.utils import parsedate_to_datetime
-            return parsedate_to_datetime(it.pub_date)
-        except Exception:
-            return datetime.min.replace(tzinfo=timezone.utc)
+    sponsors_list = bill.get("sponsors") or log.get("sponsors") or []
+    sponsor = ""
+    if sponsors_list and isinstance(sponsors_list, list):
+        first_sp = sponsors_list[0]
+        if isinstance(first_sp, dict):
+            sponsor = first_sp.get("name", "")
+        elif isinstance(first_sp, str):
+            sponsor = first_sp
 
-    new.sort(key=sort_key, reverse=True)
-    return new
+    action = log.get("action") or {}
+    action_desc = action.get("description") or ""
+    action_date = action.get("date") or ""
+
+    # A unique, stable id for dedup. Combine bill identifier + action date + a
+    # truncated description hash so we don't keep posting the same bill every
+    # time it gets a new committee read. If you'd rather post each bill ONCE
+    # ever, change this to just `identifier`.
+    dedup_key = f"{identifier}|{action_date}|{action_desc[:40]}"
+
+    return {
+        "identifier": identifier,
+        "title": title,
+        "abstract": abstract,
+        "sponsor": sponsor,
+        "action_desc": action_desc,
+        "action_date": action_date,
+        "dedup_key": dedup_key,
+    }
 
 
-# ----------------------------- Summarization --------------------------------
+def is_transportation(b: dict) -> bool:
+    haystack = " ".join([b["title"], b["abstract"], b["action_desc"]]).lower()
+    return bool(_KEYWORD_PATTERN.search(haystack))
 
-def strip_html(s: str) -> str:
-    return re.sub(r"<[^>]+>", "", s).strip()
 
+# ---------------------------------------------------------------------------
+# Summarization
+# ---------------------------------------------------------------------------
 
-def summarize(item: FeedItem) -> str:
-    """Ask Claude for a tight, neutral summary that fits in a Bluesky post."""
+def summarize(b: dict) -> str:
+    """One neutral sentence under ~180 chars. Falls back to truncated abstract."""
+    abstract = b["abstract"].strip()
     if not ANTHROPIC_KEY:
-        # Fallback: truncate the description.
-        return strip_html(item.description)[:200]
+        return abstract[:180] if abstract else b["title"][:180]
 
-    body = strip_html(item.description) or item.title
     prompt = (
-        "You are summarizing a US legislative bill for a civic-engagement Bluesky bot.\n"
-        "Write ONE plain-text sentence (under 180 characters) that states what the bill "
-        "does, neutrally. No emoji, no hashtags, no editorializing, no quotes around the "
-        "summary, no leading phrases like 'This bill'. Just the substance.\n\n"
-        f"Title: {item.title}\n"
-        f"Description: {body[:2000]}"
+        "You are summarizing a US legislative bill for a civic-engagement Bluesky bot "
+        "that focuses on transportation. Write ONE plain-text sentence (under 180 "
+        "characters) describing what the bill does, neutrally. No emoji, no hashtags, "
+        "no editorializing, no quotes around the summary, no leading phrase like 'This "
+        "bill'. Just the substance.\n\n"
+        f"Title: {b['title']}\n"
+        f"Abstract: {abstract[:2000]}"
     )
 
     try:
@@ -161,18 +180,19 @@ def summarize(item: FeedItem) -> str:
         )
         r.raise_for_status()
         data = r.json()
-        text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+        text = "".join(blk.get("text", "") for blk in data.get("content", []) if blk.get("type") == "text")
         return text.strip().strip('"').strip()
     except Exception as e:
-        print(f"  ! summarization failed, falling back: {e}", file=sys.stderr)
-        return strip_html(item.description)[:180] or item.title
+        print(f"  ! summarization failed, using abstract: {e}", file=sys.stderr)
+        return (abstract or b["title"])[:180]
 
 
-# ----------------------------- Bluesky --------------------------------------
+# ---------------------------------------------------------------------------
+# Bluesky
+# ---------------------------------------------------------------------------
 
 class BlueskyClient:
     def __init__(self, handle: str, password: str):
-        self.handle = handle
         self.session = requests.Session()
         r = self.session.post(
             f"{BLUESKY_API}/com.atproto.server.createSession",
@@ -180,34 +200,34 @@ class BlueskyClient:
             timeout=30,
         )
         r.raise_for_status()
-        data = r.json()
-        self.did = data["did"]
-        self.jwt = data["accessJwt"]
-        self.session.headers["Authorization"] = f"Bearer {self.jwt}"
+        d = r.json()
+        self.did = d["did"]
+        self.session.headers["Authorization"] = f"Bearer {d['accessJwt']}"
 
-    def post(self, text: str, link_url: str | None = None) -> dict:
-        """Post text. If link_url is given, the trailing URL in `text` becomes a clickable facet."""
+    def post(self, text: str, link_url: str, embed_title: str, embed_desc: str) -> dict:
         record = {
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "embed": {
+                "$type": "app.bsky.embed.external",
+                "external": {
+                    "uri": link_url,
+                    "title": embed_title[:300],
+                    "description": embed_desc[:1000],
+                },
+            },
         }
 
+        # Make the URL within `text` a clickable facet (UTF-8 byte offsets).
         if link_url and link_url in text:
-            # Bluesky facets use UTF-8 byte offsets, not character offsets.
-            text_bytes = text.encode("utf-8")
-            url_bytes = link_url.encode("utf-8")
-            byte_start = text_bytes.find(url_bytes)
-            if byte_start >= 0:
+            tb = text.encode("utf-8")
+            ub = link_url.encode("utf-8")
+            start = tb.find(ub)
+            if start >= 0:
                 record["facets"] = [{
-                    "index": {
-                        "byteStart": byte_start,
-                        "byteEnd": byte_start + len(url_bytes),
-                    },
-                    "features": [{
-                        "$type": "app.bsky.richtext.facet#link",
-                        "uri": link_url,
-                    }],
+                    "index": {"byteStart": start, "byteEnd": start + len(ub)},
+                    "features": [{"$type": "app.bsky.richtext.facet#link", "uri": link_url}],
                 }]
 
         r = self.session.post(
@@ -223,50 +243,74 @@ class BlueskyClient:
         return r.json()
 
 
-# ----------------------------- Composition ----------------------------------
+# ---------------------------------------------------------------------------
+# Composition
+# ---------------------------------------------------------------------------
 
-# Bluesky's hard limit is 300 graphemes; we stay safely under.
-MAX_POST = 290
+def ilga_link(identifier: str) -> str:
+    """Build an ILGA bill-status URL from an identifier like 'HB1234' or 'SB567'."""
+    m = re.match(r"^\s*([HhSs][BbRrJjMm]?)\s*0*(\d+)\s*$", identifier or "")
+    if not m:
+        return ""
+    prefix = m.group(1).upper()
+    num = m.group(2)
+    # Common cases. ILGA's URL scheme: DocTypeID is HB/SB/HR/SR/etc.
+    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={num}&GAID=17&GA=104&DocTypeID={prefix}"
 
 
-def compose_post(item: FeedItem, summary: str) -> tuple[str, str | None]:
+def emoji_for(title: str, abstract: str) -> str:
+    s = (title + " " + abstract).lower()
+    if any(w in s for w in ("transit", "cta", "metra", "pace", "bus", "subway")): return "🚇"
+    if any(w in s for w in ("rail", "amtrak", "railroad", "railway")):           return "🚆"
+    if any(w in s for w in ("airport", "aviation")):                             return "✈️"
+    if any(w in s for w in ("bicycle", "bike lane")):                            return "🚲"
+    if any(w in s for w in ("pedestrian", "sidewalk", "crosswalk")):             return "🚶"
+    if any(w in s for w in ("electric vehicle", "ev charging")):                 return "🔌"
+    if any(w in s for w in ("highway", "tollway", "expressway", "interstate")):  return "🛣️"
+    return "🚗"
+
+
+def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
     """
-    Returns (text, link_url). Layout:
+    Returns (text, link_url, embed_title, embed_description).
+    Text layout (under MAX_POST chars including the link):
+        <emoji> IL <ID> — <Title>
 
-        <Title>
         <summary>
+
         <link>
     """
-    # Make tag prefix from feed file name if it's clearly a tag (e.g. "housing.xml" -> "[housing]").
-    tag = ""
-    fname = item.feed_name.lower()
-    if fname not in {"index", "feed", "all"}:
-        tag = f"[{item.feed_name}] "
+    emoji = emoji_for(b["title"], b["abstract"])
+    link = ilga_link(b["identifier"])
+    link_block = f"\n\n{link}" if link else ""
 
-    title = item.title.strip()
-    link = item.link.strip() or None
+    title = b["title"].strip()
+    head = f"{emoji} IL {b['identifier']} — {title}"
 
-    # Reserve room for link + newlines.
-    link_block = f"\n{link}" if link else ""
-    available = MAX_POST - len(tag) - len(link_block) - 2  # 2 newlines between title/summary
-    head = f"{tag}{title}"
-
-    summary = summary.strip()
-    body = f"{head}\n\n{summary}" if summary else head
-
-    if len(body) + len(link_block) > MAX_POST:
-        # Trim summary first, then title.
-        overflow = (len(body) + len(link_block)) - MAX_POST
+    body = f"{head}\n\n{summary.strip()}"
+    if len(body + link_block) > MAX_POST:
+        # Trim summary first.
+        overflow = len(body + link_block) - MAX_POST
         if len(summary) > overflow + 1:
             summary = summary[: max(0, len(summary) - overflow - 1)].rstrip() + "…"
             body = f"{head}\n\n{summary}"
         else:
-            body = head[: MAX_POST - len(link_block) - 1].rstrip() + "…"
+            # Fall back to trimming the title.
+            avail = MAX_POST - len(link_block) - len(emoji) - len(f" IL {b['identifier']} — ") - 1
+            title = title[:max(0, avail)].rstrip() + "…"
+            head = f"{emoji} IL {b['identifier']} — {title}"
+            body = f"{head}\n\n{summary[:120]}"
 
-    return body + link_block, link
+    text = body + link_block
+
+    embed_title = f"IL {b['identifier']}: {b['title']}"[:300]
+    embed_desc = b["abstract"][:280] if b["abstract"] else summary
+    return text, link, embed_title, embed_desc
 
 
-# ----------------------------- State ----------------------------------------
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
 
 def load_state() -> dict:
     if STATE_FILE.exists():
@@ -282,51 +326,71 @@ def save_state(state: dict) -> None:
     STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
-# ----------------------------- Main -----------------------------------------
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     if not DRY_RUN and (not BSKY_HANDLE or not BSKY_PASSWORD):
         print("ERROR: BLUESKY_HANDLE and BLUESKY_APP_PASSWORD must be set.", file=sys.stderr)
         return 1
 
+    records = load_bills(JSONL_PATH)
+    if not records:
+        return 0
+
     state = load_state()
     seen = set(state.get("posted", []))
 
-    new_items = collect_new_items(seen)
-    print(f"{len(new_items)} new item(s); will post up to {POST_LIMIT}.")
+    candidates: list[dict] = []
+    for r in records:
+        b = extract_fields(r)
+        if not b:
+            continue
+        if not is_transportation(b):
+            continue
+        if b["dedup_key"] in seen:
+            continue
+        candidates.append(b)
 
-    if not new_items:
+    print(f"Found {len(candidates)} new transportation-related bill update(s).")
+    if not candidates:
         return 0
 
-    client: BlueskyClient | None = None
-    if not DRY_RUN:
-        client = BlueskyClient(BSKY_HANDLE, BSKY_PASSWORD)
+    # Newest action first.
+    def sort_key(b: dict):
+        try:
+            return datetime.strptime(b["action_date"], "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return datetime.min
 
-    posted_count = 0
-    for item in new_items[:POST_LIMIT]:
-        summary = summarize(item)
-        text, link = compose_post(item, summary)
-        print(f"\n--- {item.guid} ---\n{text}\n---")
+    candidates.sort(key=sort_key, reverse=True)
+    to_post = candidates[:POST_LIMIT]
+    print(f"Will post up to {POST_LIMIT}: posting {len(to_post)}.")
+
+    client = None if DRY_RUN else BlueskyClient(BSKY_HANDLE, BSKY_PASSWORD)
+
+    for b in to_post:
+        summary = summarize(b)
+        text, link, ec_title, ec_desc = compose_post(b, summary)
+        print(f"\n--- {b['identifier']} ({b['action_date']}) ---")
+        print(text)
+        print("---")
 
         if client:
             try:
-                client.post(text, link_url=link)
-                posted_count += 1
-                time.sleep(2)  # be polite to the PDS
+                client.post(text, link, ec_title, ec_desc)
+                time.sleep(2)
             except requests.HTTPError as e:
                 print(f"  ! post failed: {e.response.status_code} {e.response.text}", file=sys.stderr)
                 continue
-        else:
-            posted_count += 1
 
-        seen.add(item.guid)
+        seen.add(b["dedup_key"])
 
-    # Persist state regardless of dry-run so subsequent runs reflect intent.
     state["posted"] = sorted(seen)
     state["last_run"] = datetime.now(timezone.utc).isoformat()
     save_state(state)
-
-    print(f"\nDone. Posted {posted_count} item(s). State saved to {STATE_FILE.relative_to(ROOT)}.")
+    print(f"\nDone. State saved to {STATE_FILE.relative_to(ROOT)}.")
     return 0
 
 
