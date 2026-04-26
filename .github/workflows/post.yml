@@ -1,16 +1,16 @@
-name: govbot-bluesky
+name: govbot-bluesky-transportation
 
 on:
   schedule:
     # Every 6 hours.
     - cron: "0 */6 * * *"
-  workflow_dispatch: {}  # manual trigger from the Actions tab
+  workflow_dispatch: {}  # adds a "Run workflow" button
 
 permissions:
   contents: write  # needed to commit state/posted.json back
 
 concurrency:
-  group: govbot-bluesky
+  group: govbot-bluesky-transportation
   cancel-in-progress: false
 
 defaults:
@@ -29,38 +29,37 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install Python deps
         run: pip install requests
 
-      - name: Install govbot, fetch & build feeds
-        # All in one step so PATH stays in scope.
-        # Manual pipeline: clone IL data → tag it → build RSS feeds into docs/
+      - name: Install govbot, fetch IL data, dump JSONL
+        # All in one step so the updated PATH stays in scope.
         run: |
           curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
           export PATH="$HOME/.govbot/bin:$PATH"
           govbot --version || true
-          # Pull Illinois legislation data (change/add states here as you like)
           govbot clone il
-          # Stream activity, tag it, and build RSS feeds into docs/
-          govbot logs | govbot tag | govbot build
+          govbot logs > bills.jsonl
+          echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
 
-      - name: Post new items to Bluesky
+      - name: Filter, summarize, and post to Bluesky
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          POST_LIMIT: "5"
+          POST_LIMIT: "3"
         run: python scripts/post_to_bluesky.py
 
       - name: Commit state changes
         run: |
           git config user.name  "govbot-bluesky[bot]"
           git config user.email "govbot-bluesky[bot]@users.noreply.github.com"
-          git add state/posted.json docs/ || true
+          git add state/posted.json || true
           if git diff --cached --quiet; then
-            echo "No state or feed changes to commit."
+            echo "No state changes to commit."
           else
-            git commit -m "chore: update posted state and feeds [skip ci]"
+            git commit -m "chore: update posted state [skip ci]"
             git push
           fi
