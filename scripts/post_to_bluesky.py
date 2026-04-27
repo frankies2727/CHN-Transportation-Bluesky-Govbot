@@ -39,22 +39,6 @@ US_STATES = {
     "VA","WA","WV","WI","WY","DC","PR","GU","VI","AS","MP",
 }
 
-# Map full state names to codes — useful when the data only includes a name.
-STATE_NAME_TO_CODE = {
-    "alabama":"AL","alaska":"AK","arizona":"AZ","arkansas":"AR","california":"CA",
-    "colorado":"CO","connecticut":"CT","delaware":"DE","florida":"FL","georgia":"GA",
-    "hawaii":"HI","idaho":"ID","illinois":"IL","indiana":"IN","iowa":"IA",
-    "kansas":"KS","kentucky":"KY","louisiana":"LA","maine":"ME","maryland":"MD",
-    "massachusetts":"MA","michigan":"MI","minnesota":"MN","mississippi":"MS",
-    "missouri":"MO","montana":"MT","nebraska":"NE","nevada":"NV","new hampshire":"NH",
-    "new jersey":"NJ","new mexico":"NM","new york":"NY","north carolina":"NC",
-    "north dakota":"ND","ohio":"OH","oklahoma":"OK","oregon":"OR","pennsylvania":"PA",
-    "rhode island":"RI","south carolina":"SC","south dakota":"SD","tennessee":"TN",
-    "texas":"TX","utah":"UT","vermont":"VT","virginia":"VA","washington":"WA",
-    "west virginia":"WV","wisconsin":"WI","wyoming":"WY",
-    "district of columbia":"DC",
-}
-
 TRANSPORTATION_KEYWORDS = [
     "transportation", "transit", "rail", "railroad", "railway",
     "subway", "streetcar", "light rail", "commuter rail", "ferry",
@@ -76,6 +60,7 @@ TRANSPORTATION_KEYWORDS = [
     "speed limit", "dui", "dwi", "seatbelt", "helmet law",
     "auto insurance",
     "traffic", "parking", "congestion", "mobility",
+    "school bus", "bus driver", "bus drivers",
 ]
 
 _KEYWORD_PATTERN = re.compile(
@@ -86,9 +71,8 @@ _KEYWORD_PATTERN = re.compile(
 MAX_POST = 290
 LINK_PREFIX = "🔗 "
 
-
 # ---------------------------------------------------------------------------
-# Loading & state detection
+# Loading
 # ---------------------------------------------------------------------------
 
 def load_bills(path: Path) -> list[dict]:
@@ -109,161 +93,53 @@ def load_bills(path: Path) -> list[dict]:
     return bills
 
 
-# Known state-legislature domain prefixes. Add more as you expand coverage.
-DOMAIN_TO_STATE = {
-    "ilga.gov": "IL",
-    "iga.in.gov": "IN",
-    "legislature.mi.gov": "MI",
-    "docs.legis.wisconsin.gov": "WI",
-    "legis.wisconsin.gov": "WI",
-    "ohiosenate.gov": "OH",
-    "ohiohouse.gov": "OH",
-    "legislature.ohio.gov": "OH",
-    "legis.iowa.gov": "IA",
-    "house.mo.gov": "MO",
-    "senate.mo.gov": "MO",
-    "revisor.mo.gov": "MO",
-    "revisor.mn.gov": "MN",
-    "leg.mn.gov": "MN",
-    "house.mn.gov": "MN",
-    "senate.mn": "MN",
-}
+# ---------------------------------------------------------------------------
+# State detection — govbot encodes state in source paths like 'state:ia'
+# ---------------------------------------------------------------------------
+
+_STATE_TAG_PATTERN = re.compile(r"\bstate:([a-z]{2})\b", re.IGNORECASE)
 
 
 def _state_from_text(text: str) -> str:
-    """Try to extract a 2-letter state code from a string of any shape."""
+    """Extract a state code from any string. Most govbot strings have 'state:xx'."""
     if not isinstance(text, str):
         return ""
-
-    # Pattern 0: known legislature domain
-    lower_text = text.lower()
-    for domain, code in DOMAIN_TO_STATE.items():
-        if domain in lower_text:
-            return code
-
-    # Pattern 1: 2-letter code surrounded by non-letters (handles 'IL', 'us-il', '/il/')
-    for m in re.finditer(r"(?<![A-Za-z])([A-Za-z]{2})(?![A-Za-z])", text):
+    m = _STATE_TAG_PATTERN.search(text)
+    if m:
         code = m.group(1).upper()
         if code in US_STATES:
             return code
-
-    # Pattern 2: full state name (case-insensitive)
-    lower = text.lower()
-    for name, code in STATE_NAME_TO_CODE.items():
-        # Use word boundaries to avoid 'Indiana' matching 'Indianapolis' incorrectly
-        if re.search(r"\b" + re.escape(name) + r"\b", lower):
-            return code
-
     return ""
+
+
+def _walk_strings(obj):
+    """Yield every string anywhere in a nested dict/list structure."""
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            yield from _walk_strings(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_strings(v)
 
 
 def detect_state(record: dict) -> str:
-    """Find the state code by checking many spots in the record."""
-    # 1) Top-level sources URLs (most reliable)
-    sources = record.get("sources") or []
-    if isinstance(sources, list):
-        for s in sources:
-            if isinstance(s, dict):
-                for v in s.values():
-                    code = _state_from_text(v if isinstance(v, str) else "")
-                    if code:
-                        return code
-            elif isinstance(s, str):
-                code = _state_from_text(s)
-                if code:
-                    return code
-
-    # 2) bill.from_organization (often "Michigan Senate" or similar)
-    bill = record.get("bill") or {}
-    org = bill.get("from_organization")
-    if isinstance(org, dict):
-        for v in org.values():
-            code = _state_from_text(v if isinstance(v, str) else "")
-            if code:
-                return code
-    elif isinstance(org, str):
-        code = _state_from_text(org)
+    """
+    Find the state by scanning every string in the record for the 'state:xx'
+    pattern that govbot embeds in its source paths. This is the most reliable
+    method given the actual data shape we observed.
+    """
+    for s in _walk_strings(record):
+        code = _state_from_text(s)
         if code:
             return code
-
-    # 3) bill.legislative_session (might mention the state)
-    sess = bill.get("legislative_session")
-    if isinstance(sess, dict):
-        for v in sess.values():
-            code = _state_from_text(v if isinstance(v, str) else "")
-            if code:
-                return code
-    elif isinstance(sess, str):
-        code = _state_from_text(sess)
-        if code:
-            return code
-
-    # 4) Record id (e.g., "il-2025-SB857")
-    rid = record.get("id") or ""
-    m = re.match(r"^([a-z]{2})[-_/]", rid, re.IGNORECASE)
-    if m and m.group(1).upper() in US_STATES:
-        return m.group(1).upper()
-
-    # 5) Anywhere else with `jurisdiction`/`state`/`scope`
-    for container in (record, bill):
-        for key in ("jurisdiction", "state", "locale", "scope"):
-            v = container.get(key)
-            if isinstance(v, str):
-                code = _state_from_text(v)
-                if code:
-                    return code
-            elif isinstance(v, dict):
-                for sub in v.values():
-                    code = _state_from_text(sub if isinstance(sub, str) else "")
-                    if code:
-                        return code
-
     return ""
 
 
-def find_url_in_record(record: dict) -> str:
-    """Return the first usable source URL anywhere in the record."""
-    # Top-level sources is the canonical place
-    sources = record.get("sources") or []
-    if isinstance(sources, list):
-        for s in sources:
-            url = _extract_url_from(s)
-            if url:
-                return url
-
-    bill = record.get("bill") or {}
-    for collection_name in ("sources", "links", "versions", "documents"):
-        items = bill.get(collection_name) or []
-        if isinstance(items, list):
-            for item in items:
-                url = _extract_url_from(item)
-                if url:
-                    return url
-
-    log = record.get("log") or {}
-    action = log.get("action") or {}
-    url = _extract_url_from(action)
-    if url:
-        return url
-
-    for key in ("url", "uri", "link", "openstates_url"):
-        v = record.get(key) or bill.get(key)
-        if isinstance(v, str) and v.startswith("http"):
-            return v
-
-    return ""
-
-
-def _extract_url_from(obj) -> str:
-    if isinstance(obj, str) and obj.startswith("http"):
-        return obj
-    if isinstance(obj, dict):
-        for key in ("url", "uri", "link", "href"):
-            v = obj.get(key)
-            if isinstance(v, str) and v.startswith("http"):
-                return v
-    return ""
-
+# ---------------------------------------------------------------------------
+# Field extraction
+# ---------------------------------------------------------------------------
 
 def extract_fields(record: dict) -> dict | None:
     bill = record.get("bill") or {}
@@ -275,7 +151,6 @@ def extract_fields(record: dict) -> dict | None:
         return None
 
     state = detect_state(record)
-    record_url = find_url_in_record(record)
 
     abstracts = bill.get("abstracts") or []
     abstract = ""
@@ -285,6 +160,13 @@ def extract_fields(record: dict) -> dict | None:
             abstract = first.get("abstract", "")
         elif isinstance(first, str):
             abstract = first
+
+    # subject is sometimes a list of tags — useful as fallback search material
+    subjects = bill.get("subject") or []
+    if isinstance(subjects, list):
+        subjects_text = " ".join(str(s) for s in subjects)
+    else:
+        subjects_text = str(subjects) if subjects else ""
 
     sponsors_list = bill.get("sponsors") or log.get("sponsors") or []
     sponsor = ""
@@ -306,16 +188,17 @@ def extract_fields(record: dict) -> dict | None:
         "identifier": identifier,
         "title": title,
         "abstract": abstract,
+        "subjects": subjects_text,
         "sponsor": sponsor,
         "action_desc": action_desc,
         "action_date": action_date,
-        "record_url": record_url,
         "dedup_key": dedup_key,
     }
 
 
 def is_transportation(b: dict) -> bool:
-    haystack = " ".join([b["title"], b["abstract"], b["action_desc"]]).lower()
+    """Check title, abstract, action, and subject tags for transportation terms."""
+    haystack = " ".join([b["title"], b["abstract"], b["action_desc"], b["subjects"]]).lower()
     return bool(_KEYWORD_PATTERN.search(haystack))
 
 
@@ -327,8 +210,6 @@ def summarize(b: dict) -> str:
     abstract = (b["abstract"] or "").strip()
     title = b["title"].strip()
 
-    # If abstract is empty or duplicates the title, fallback is just empty
-    # (we'll show the title alone in compose_post).
     if not abstract or abstract.lower() == title.lower():
         fallback = ""
     else:
@@ -432,29 +313,110 @@ class BlueskyClient:
 
 
 # ---------------------------------------------------------------------------
-# Composition
+# Per-state link builders
+# Each one takes a bill identifier (e.g. "HB 4119" or "SB857") and returns
+# either a search/listing URL or an empty string if it can't be built.
 # ---------------------------------------------------------------------------
 
-def ilga_link(identifier: str) -> str:
-    m = re.match(r"^\s*([HhSs][BbRrJjMm]?)\s*0*(\d+)\s*$", identifier or "")
+def _split_identifier(ident: str) -> tuple[str, str]:
+    """Split 'HB 4119' or 'SB0857' into ('HB', '4119') / ('SB', '857')."""
+    m = re.match(r"^\s*([A-Za-z]+)\s*0*(\d+)\s*$", ident or "")
     if not m:
+        return "", ""
+    return m.group(1).upper(), m.group(2)
+
+
+def link_il(ident: str) -> str:
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
         return ""
-    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={m.group(2)}&GAID=17&GA=104&DocTypeID={m.group(1).upper()}"
+    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={num}&GAID=17&GA=104&DocTypeID={prefix}"
+
+
+def link_mi(ident: str) -> str:
+    # Michigan's bill search page works with a query string
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
+        return ""
+    # Format like "2025-HB-4119"
+    return f"https://www.legislature.mi.gov/Search/Bills?bills={prefix}-{num}"
+
+
+def link_in(ident: str) -> str:
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
+        return ""
+    # Indiana General Assembly bill page
+    return f"https://iga.in.gov/legislative/2025/bills/{('house' if prefix.startswith('H') else 'senate')}/{num}"
+
+
+def link_ia(ident: str) -> str:
+    # Iowa Legislature's bill lookup
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
+        return ""
+    return f"https://www.legis.iowa.gov/legislation/BillBook?ga=91&ba={prefix}{num}"
+
+
+def link_oh(ident: str) -> str:
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
+        return ""
+    chamber = "house" if prefix.startswith("H") else "senate"
+    return f"https://www.legislature.ohio.gov/legislation/{chamber}-bill/{num}"
+
+
+def link_wi(ident: str) -> str:
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
+        return ""
+    return f"https://docs.legis.wisconsin.gov/2025/proposals/{prefix.lower()}{num}"
+
+
+def link_mn(ident: str) -> str:
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
+        return ""
+    return f"https://www.revisor.mn.gov/bills/bill.php?b={('House' if prefix.startswith('H') else 'Senate')}&f={prefix}{num}&y=2025"
+
+
+def link_mo(ident: str) -> str:
+    prefix, num = _split_identifier(ident)
+    if not (prefix and num):
+        return ""
+    chamber = "house" if prefix.startswith("H") else "senate"
+    return f"https://www.{chamber}.mo.gov/Bill.aspx?bill={prefix}{num}"
+
+
+STATE_LINK_BUILDERS = {
+    "IL": link_il,
+    "MI": link_mi,
+    "IN": link_in,
+    "IA": link_ia,
+    "OH": link_oh,
+    "WI": link_wi,
+    "MN": link_mn,
+    "MO": link_mo,
+}
 
 
 def link_for(b: dict) -> str:
-    if b.get("record_url"):
-        return b["record_url"]
-    if b.get("state") == "IL":
-        return ilga_link(b["identifier"])
+    """Build a clickable URL for the bill, or '' if we don't have one for the state."""
+    builder = STATE_LINK_BUILDERS.get(b.get("state", ""))
+    if builder:
+        return builder(b["identifier"])
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Composition
+# ---------------------------------------------------------------------------
+
 def emoji_for(title: str, abstract: str) -> str:
     s = (title + " " + abstract).lower()
-    if any(w in s for w in ("transit", "cta", "metra", "pace", "bus", "subway")): return "🚇"
+    if any(w in s for w in ("transit", "cta", "metra", "pace", "school bus", "bus driver", "subway")): return "🚌"
     if any(w in s for w in ("rail", "amtrak", "railroad", "railway")):           return "🚆"
-    if any(w in s for w in ("airport", "aviation")):                             return "✈️"
+    if any(w in s for w in ("airport", "aviation", "aircraft")):                 return "✈️"
     if any(w in s for w in ("bicycle", "bike lane", "cyclist")):                 return "🚲"
     if any(w in s for w in ("pedestrian", "sidewalk", "crosswalk")):             return "🚶"
     if any(w in s for w in ("electric vehicle", "ev charging")):                 return "🔌"
@@ -472,7 +434,6 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
     title = b["title"].strip()
     summary = (summary or "").strip()
 
-    # Skip the summary line if it's empty or just duplicates the title.
     if not summary or summary.lower() == title.lower():
         body_extra = ""
     else:
@@ -531,14 +492,6 @@ def main() -> int:
     records = load_bills(JSONL_PATH)
     if not records:
         return 0
-
-    # Deeper debug: show one full sample record so we can see what's actually in there.
-    if records:
-        sample = records[0]
-        print("=" * 60)
-        print("DEBUG sample record (first 1500 chars):")
-        print(json.dumps(sample, indent=2)[:1500])
-        print("=" * 60)
 
     state = load_state()
     seen = set(state.get("posted", []))
