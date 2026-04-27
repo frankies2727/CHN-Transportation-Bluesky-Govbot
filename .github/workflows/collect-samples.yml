@@ -1,0 +1,158 @@
+name: collect-samples
+
+# A standalone workflow that fetches govbot data and saves a batch of full
+# bill records into the samples/ folder. Does NOT post anything to Bluesky.
+# Does NOT overwrite existing samples — each run adds new files alongside
+# whatever is already there.
+#
+# Filenames include a short hash of the record's contents, so re-running
+# this workflow won't duplicate identical records but WILL save new variations
+# (e.g. the same bill with a newer log action) as separate files.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample_count:
+        description: "How many records to save this run"
+        required: false
+        default: "4"
+      states:
+        description: "Space-separated state codes to fetch (e.g. 'il in mi')"
+        required: false
+        default: "il in mi wi oh ia mn mo"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install govbot, fetch data, dump JSONL
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
+          export PATH="$HOME/.govbot/bin:$PATH"
+          govbot --version || true
+          govbot clone ${{ github.event.inputs.states }}
+          govbot logs > bills.jsonl
+          echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
+
+      - name: Save sample records into samples/ (no overwrite)
+        env:
+          SAMPLE_COUNT: ${{ github.event.inputs.sample_count }}
+        run: |
+          python <<'PY'
+          import hashlib, json, os, random, re
+          from pathlib import Path
+
+          SAMPLES_DIR = Path("samples")
+          SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
+
+          STATE_TAG = re.compile(r"\bstate:([a-z]{2})\b", re.IGNORECASE)
+
+          def find_state(rec):
+              def walk(o):
+                  if isinstance(o, str):
+                      m = STATE_TAG.search(o)
+                      return m.group(1).upper() if m else ""
+                  if isinstance(o, dict):
+                      for v in o.values():
+                          s = walk(v)
+                          if s: return s
+                  if isinstance(o, list):
+                      for v in o:
+                          s = walk(v)
+                          if s: return s
+                  return ""
+              return walk(rec) or "unknown"
+
+          # Read all records
+          records = []
+          with open("bills.jsonl", encoding="utf-8") as f:
+              for line in f:
+                  line = line.strip()
+                  if not line: continue
+                  try:
+                      records.append(json.loads(line))
+                  except json.JSONDecodeError:
+                      pass
+
+          print(f"Read {len(records)} records from bills.jsonl")
+          if not records:
+              raise SystemExit(0)
+
+          target = int(os.environ.get("SAMPLE_COUNT", "30") or "30")
+
+          # Bucket by state and shuffle each bucket
+          random.seed()  # use real randomness so re-runs collect variety
+          by_state = {}
+          for r in records:
+              by_state.setdefault(find_state(r), []).append(r)
+          for items in by_state.values():
+              random.shuffle(items)
+
+          # Round-robin pull across states until we have `target` picks (or run out)
+          picks = []
+          state_keys = sorted(by_state.keys())
+          while len(picks) < target and any(by_state[s] for s in state_keys):
+              for s in state_keys:
+                  if not by_state[s]:
+                      continue
+                  picks.append(by_state[s].pop())
+                  if len(picks) >= target:
+                      break
+
+          # Existing filenames so we know what to skip
+          existing = {p.name for p in SAMPLES_DIR.iterdir() if p.is_file()}
+
+          new_files = 0
+          for rec in picks:
+              # Build filename: state-identifier-shortHash.json
+              state = find_state(rec).lower() or "unknown"
+              ident = (rec.get("bill") or {}).get("identifier") or rec.get("id") or "unknown"
+              safe_ident = re.sub(r"[^A-Za-z0-9_-]+", "_", str(ident)).strip("_") or "unknown"
+
+              # Hash of content so the same record doesn't pile up across runs,
+              # but a *different* record for the same bill (new log action) does.
+              blob = json.dumps(rec, sort_keys=True, ensure_ascii=False).encode("utf-8")
+              short_hash = hashlib.sha256(blob).hexdigest()[:8]
+
+              fname = f"{state}-{safe_ident}-{short_hash}.json"
+              if fname in existing:
+                  continue
+              (SAMPLES_DIR / fname).write_text(
+                  json.dumps(rec, indent=2, sort_keys=True, ensure_ascii=False),
+                  encoding="utf-8",
+              )
+              existing.add(fname)
+              new_files += 1
+              print(f"  + {fname}")
+
+          total = sum(1 for p in SAMPLES_DIR.iterdir() if p.is_file())
+          print(f"\nAdded {new_files} new file(s). samples/ now has {total} total.")
+          PY
+
+      - name: Commit new samples
+        run: |
+          git config user.name  "samples-bot"
+          git config user.email "samples-bot@users.noreply.github.com"
+          git add samples/ || true
+          if git diff --cached --quiet; then
+            echo "No new samples to commit."
+          else
+            git commit -m "samples: add new bill records [skip ci]"
+            git push
+          fi
