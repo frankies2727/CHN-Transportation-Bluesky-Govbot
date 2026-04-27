@@ -2,12 +2,11 @@ name: govbot-bluesky-transportation
 
 on:
   schedule:
-    # Every 6 hours.
     - cron: "0 */6 * * *"
-  workflow_dispatch: {} # adds a simple "Run workflow" button
+  workflow_dispatch: {}
 
 permissions:
-  contents: write  # needed to commit state/posted.json back
+  contents: write
 
 concurrency:
   group: govbot-bluesky-transportation
@@ -34,8 +33,14 @@ jobs:
       - name: Install Python deps
         run: pip install -r requirements.txt
 
+      - name: Verify script exists
+        run: |
+          echo "Listing scripts/ folder:"
+          ls -la scripts/
+          echo "Confirming the file we will run:"
+          test -f scripts/post_to_bluesky.py && echo "OK: scripts/post_to_bluesky.py exists" || (echo "MISSING: scripts/post_to_bluesky.py" && exit 1)
+
       - name: Install govbot, fetch IL data, dump JSONL
-        # All in one step so the updated PATH stays in scope.
         run: |
           curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
           export PATH="$HOME/.govbot/bin:$PATH"
@@ -49,8 +54,7 @@ jobs:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          POST_LIMIT: ${{ inputs.POST_LIMIT || '3' }}
-          DRY_RUN: ${{ inputs.DRY_RUN || '0' }}
+          POST_LIMIT: "3"
         run: python scripts/post_to_bluesky.py
 
       - name: Commit state changes
