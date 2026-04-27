@@ -1,0 +1,26 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HF 383",
+    "legislative_session": "2025-2026",
+    "subject": [
+      "controlled substances",
+      "mushrooms"
+    ],
+    "title": "A bill for an act relating to the controlled substance crystalline polymorph psilocybin."
+  },
+  "id": "HF 383",
+  "log": {
+    "action": {
+      "date": "2025-02-24",
+      "description": "Message from House.",
+      "organization_id": "~{\"classification\": \"upper\"}"
+    },
+    "bill_id": "HF 383"
+  },
+  "sources": {
+    "bill": "ia-legislation/country:us/state:ia/sessions/2025-2026/bills/HF383/metadata.json",
+    "log": "ia-legislation/country:us/state:ia/sessions/2025-2026/bills/HF383/logs/20250224T000000Z_message_from_house.json"
+  },
+  "timestamp": "20250224T000000Z"
+}

@@ -1,0 +1,31 @@
+{
+  "bill": {
+    "abstracts": [
+      {
+        "abstract": "Allows the general assembly to amend congressional districts at a time other than the first regular session of the general assembly convening immediately following the United States decennial census. Specifies requirements that apply to any action challenging the apportionment of congressional districts or general assembly districts. Establishes new Indiana congressional districts. Provides for expiration of the current congressional districts on the date of the 2026 general election. Specifies that for purposes of the 2026 primary and general election, a precinct may cross the boundary of a congressional district. Requires the election division to assist each county voter registration office with the implementation of this act. Makes technical and necessary changes in related statutes.",
+        "note": "Digest"
+      }
+    ],
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HB 1032",
+    "legislative_session": "2026",
+    "subject": [
+      "GENERAL ASSEMBLY; Apportionment and Redistricting"
+    ],
+    "title": "Redistricting."
+  },
+  "id": "HB 1032",
+  "log": {
+    "action": {
+      "date": "2025-12-02",
+      "description": "Minority report (C Jackson) ruled out of order",
+      "organization_id": "~{\"classification\": \"lower\"}"
+    },
+    "bill_id": "HB 1032"
+  },
+  "sources": {
+    "bill": "in-legislation/country:us/state:in/sessions/2026/bills/HB1032/metadata.json",
+    "log": "in-legislation/country:us/state:in/sessions/2026/bills/HB1032/logs/20251202T000000Z_minority_report_c_jackson_ruled_out_of_order.json"
+  },
+  "timestamp": "20251202T000000Z"
+}

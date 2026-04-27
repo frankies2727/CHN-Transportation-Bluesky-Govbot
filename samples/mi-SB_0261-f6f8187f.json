@@ -1,0 +1,26 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"upper\"}",
+    "identifier": "SB 0261",
+    "legislative_session": "2025-2026",
+    "subject": [
+      "Civil procedure: other",
+      "Courts: other"
+    ],
+    "title": "Civil procedure: other; civil actions for criminal sexual conduct; provide exception to notice requirements for actions filed in the court of claims. Amends sec. 6431 of 1961 PA 236 (MCL 600.6431).   TIE BAR WITH: SB 257'25"
+  },
+  "id": "SB 0261",
+  "log": {
+    "action": {
+      "date": "2025-05-07",
+      "description": "PLACED ON ORDER OF THIRD READING",
+      "organization_id": "~{\"classification\": \"upper\"}"
+    },
+    "bill_id": "SB 0261"
+  },
+  "sources": {
+    "bill": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/SB0261/metadata.json",
+    "log": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/SB0261/logs/20250507T000000Z_placed_on_order_of_third_reading.json"
+  },
+  "timestamp": "20250507T000000Z"
+}

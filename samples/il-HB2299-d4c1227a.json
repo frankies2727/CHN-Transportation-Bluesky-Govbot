@@ -1,0 +1,30 @@
+{
+  "bill": {
+    "abstracts": [
+      {
+        "abstract": "Amends the Code of Civil Procedure. Makes a technical change in the short title Section."
+      }
+    ],
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HB2299",
+    "legislative_session": "104th",
+    "title": "CIVIL LAW-TECH"
+  },
+  "id": "HB2299",
+  "log": {
+    "action": {
+      "classification": [
+        "reading-2"
+      ],
+      "date": "2025-03-27",
+      "description": "Second Reading - Short Debate",
+      "organization_id": "~{\"classification\": \"lower\"}"
+    },
+    "bill_id": "HB2299"
+  },
+  "sources": {
+    "bill": "il-legislation/country:us/state:il/sessions/104th/bills/HB2299/metadata.json",
+    "log": "il-legislation/country:us/state:il/sessions/104th/bills/HB2299/logs/20250327T000000Z_second_reading_short_debate.json"
+  },
+  "timestamp": "20250327T000000Z"
+}

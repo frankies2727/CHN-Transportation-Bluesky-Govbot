@@ -1,0 +1,29 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HJR 3",
+    "legislative_session": "2025S2",
+    "subject": [
+      "CONSTITUTIONAL AMENDMENTS",
+      "GENERAL ASSEMBLY"
+    ],
+    "title": "Creates the \"Protect Missouri Voters\" amendment"
+  },
+  "id": "HJR 3",
+  "log": {
+    "action": {
+      "classification": [
+        "passage",
+        "reading-3"
+      ],
+      "date": "2025-09-09T05:00:00+00:00",
+      "description": "Third Read and Passed (H) - AYES: 98 NOES: 58 PRESENT: 0",
+      "organization_id": "~{\"classification\": \"lower\"}"
+    },
+    "bill_id": "HJR 3"
+  },
+  "sources": {
+    "bill": "mo-legislation/country:us/state:mo/sessions/2025S2/bills/HJR3/metadata.json",
+    "log": "mo-legislation/country:us/state:mo/sessions/2025S2/bills/HJR3/logs/20250909T050000Z.classification.passage.lower.json"
+  }
+}

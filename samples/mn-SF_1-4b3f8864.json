@@ -1,0 +1,27 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"upper\"}",
+    "identifier": "SF 1",
+    "legislative_session": "2025s1",
+    "subject": [
+      "Appropriations-Omnibus Bills",
+      "Education-Higher",
+      "Omnibus"
+    ],
+    "title": "Omnibus Higher Education policy and appropriations"
+  },
+  "id": "SF 1",
+  "log": {
+    "action": {
+      "date": "2025-06-09",
+      "description": "Taken from table",
+      "organization_id": "~{\"classification\": \"upper\"}"
+    },
+    "bill_id": "SF 1"
+  },
+  "sources": {
+    "bill": "mn-legislation/country:us/state:mn/sessions/2025s1/bills/SF1/metadata.json",
+    "log": "mn-legislation/country:us/state:mn/sessions/2025s1/bills/SF1/logs/20250609T000000Z_taken_from_table.json"
+  },
+  "timestamp": "20250609T000000Z"
+}
