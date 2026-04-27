@@ -1,0 +1,29 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HB 4798",
+    "legislative_session": "2025-2026",
+    "subject": [
+      "Local government: authorities",
+      "Recreation: other"
+    ],
+    "title": "Local government: authorities; revisions to the recreational authorities act; provide for. Amends sec. 1901 of 1994 PA 451 (MCL 324.1901).   TIE BAR WITH: HB 4694'25"
+  },
+  "id": "HB 4798",
+  "log": {
+    "action": {
+      "classification": [
+        "reading-3"
+      ],
+      "date": "2025-09-18",
+      "description": "read a third time",
+      "organization_id": "~{\"classification\": \"lower\"}"
+    },
+    "bill_id": "HB 4798"
+  },
+  "sources": {
+    "bill": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/HB4798/metadata.json",
+    "log": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/HB4798/logs/20250918T000000Z_read_a_third_time.json"
+  },
+  "timestamp": "20250918T000000Z"
+}

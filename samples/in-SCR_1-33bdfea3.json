@@ -1,0 +1,26 @@
+{
+  "bill": {
+    "abstracts": [
+      {
+        "abstract": "A CONCURRENT RESOLUTION to allow the Senate and the House of Representatives of the 124th Indiana General Assembly to adjourn and recess separately throughout the Second Regular Session for periods in excess of three (3) consecutive days as the need, in the judgment of the President Pro Tempore of the Senate and the Speaker of the House of Representatives, respectively, may arise.",
+        "note": "Digest"
+      }
+    ],
+    "from_organization": "~{\"classification\": \"upper\"}",
+    "identifier": "SCR 1",
+    "legislative_session": "2026",
+    "subject": [
+      "RESOLUTIONS; General Assembly; Generally"
+    ],
+    "title": "To allow the Senate and the House of Representatives of the 124th Indiana General Assembly to adjourn and recess separately throughout the Second Regular Session."
+  },
+  "id": "SCR 1",
+  "log": {
+    "bill_id": "SCR 1"
+  },
+  "sources": {
+    "bill": "in-legislation/country:us/state:in/sessions/2026/bills/SCR1/metadata.json",
+    "log": "in-legislation/country:us/state:in/sessions/2026/bills/SCR1/logs/20251118T133825Z.vote_event.pass.upper.json"
+  },
+  "timestamp": "20251118T133825Z.vote"
+}

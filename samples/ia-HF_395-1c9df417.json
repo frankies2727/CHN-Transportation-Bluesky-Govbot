@@ -1,0 +1,30 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HF 395",
+    "legislative_session": "2025-2026",
+    "subject": [
+      "driver's licenses",
+      "driving",
+      "school buses",
+      "school districts"
+    ],
+    "title": "A bill for an act relating to approved courses of instruction for school bus drivers, and including effective date provisions."
+  },
+  "id": "HF 395",
+  "log": {
+    "action": {
+      "classification": [
+        "passage"
+      ],
+      "date": "2025-05-08",
+      "description": "Passed House, yeas 64, nays 20.",
+      "organization_id": "~{\"classification\": \"lower\"}"
+    },
+    "bill_id": "HF 395"
+  },
+  "sources": {
+    "bill": "ia-legislation/country:us/state:ia/sessions/2025-2026/bills/HF395/metadata.json",
+    "log": "ia-legislation/country:us/state:ia/sessions/2025-2026/bills/HF395/logs/20250508T000000Z.classification.passage.lower.json"
+  }
+}
