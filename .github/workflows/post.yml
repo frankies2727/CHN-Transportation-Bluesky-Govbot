@@ -49,6 +49,28 @@ jobs:
           govbot logs > bills.jsonl
           echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
 
+      - name: Debug — peek at bills.jsonl
+        run: |
+          echo "=== First 3 records (truncated to 500 chars each) ==="
+          head -3 bills.jsonl | cut -c1-500
+          echo ""
+          echo "=== All bill identifiers in this run ==="
+          python -c "
+          import json
+          with open('bills.jsonl') as f:
+              for line in f:
+                  try:
+                      r = json.loads(line)
+                      bill = r.get('bill') or {}
+                      log = r.get('log') or {}
+                      action = log.get('action') or {}
+                      print(f\"{bill.get('identifier','?'):10} | {action.get('date','?'):12} | {bill.get('title','?')[:80]}\")
+                  except: pass
+          "
+          echo ""
+          echo "=== Lines mentioning common transportation terms ==="
+          grep -ciE 'transit|transport|highway|rail|bicycle|vehicle|traffic' bills.jsonl || echo "0 matches"
+
       - name: Filter, summarize, and post to Bluesky
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
