@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 JSONL_PATH = ROOT / "bills.jsonl"
 STATE_FILE = ROOT / "state" / "posted.json"
 
-POST_LIMIT = int(os.environ.get("POST_LIMIT", "3"))
+POST_LIMIT = int(os.environ.get("POST_LIMIT", "2"))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
 BSKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "")
