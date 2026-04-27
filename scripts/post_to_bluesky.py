@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Filter govbot's bills.jsonl for transportation-related Illinois bills,
-dedupe against state/posted.json, summarize with Claude, and post to Bluesky.
+Filter govbot's bills.jsonl for transportation-related bills across multiple
+states, dedupe against state/posted.json, summarize with Claude, and post to
+Bluesky.
 
 Env vars (required at post time):
     BLUESKY_HANDLE
@@ -38,24 +39,34 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 BLUESKY_API = "https://bsky.social/xrpc"
 ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_MODEL = "claude-haiku-4-5"  # fast + cheap
+ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 
 # ---------------------------------------------------------------------------
 # Transportation keywords. Whole-word matching, case-insensitive.
-# Add/remove as you like — these are conservative defaults focused on Illinois.
 # ---------------------------------------------------------------------------
 TRANSPORTATION_KEYWORDS = [
-    "transportation", "transit", "highway", "tollway", "roadway",
-    "expressway", "interstate", "bridge", "rail", "railroad", "railway",
-    "amtrak", "metra", "cta", "pace", "rta", "idot",
-    "bicycle", "bike lane", "pedestrian", "sidewalk", "crosswalk",
-    "vehicle", "automobile", "motor vehicle", "driver", "license plate",
-    "traffic", "speed limit", "tollbooth", "toll road", "parking",
-    "airport", "aviation", "freight",
+    "transportation", "transit", "rail", "railroad", "railway",
+    "subway", "streetcar", "light rail", "commuter rail", "ferry",
+    "amtrak", "metra", "cta", "pace", "rta", "idot", "indot", "modot", "wsdot", "mdot",
+    "bicycle", "bicyclist", "bike lane", "cyclist",
+    "pedestrian", "sidewalk", "crosswalk", "walkability",
+    "airport", "aviation", "airline",
+    "freight", "trucking", "commercial vehicle", "cdl",
+    "rideshare", "ride-share", "ride share", "taxicab",
     "ev charging", "electric vehicle", "autonomous vehicle",
+    "scooter", "e-bike",
+    "highway", "tollway", "roadway", "expressway", "interstate",
+    "tollbooth", "toll road", "toll bridge",
+    "traffic signal", "traffic safety", "road construction",
+    "complete streets", "vision zero", "pedestrian safety",
+    "infrastructure", "transportation infrastructure",
+    "motor vehicle", "motor fuel tax", "gas tax",
+    "vehicle registration", "license plate", "driver's license",
+    "speed limit", "dui", "dwi", "seatbelt", "helmet law",
+    "auto insurance",
+    "traffic", "parking", "congestion", "mobility",
 ]
 
-# Compile once. \b is word boundary; we lowercase both sides.
 _KEYWORD_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in TRANSPORTATION_KEYWORDS) + r")\b",
     re.IGNORECASE,
@@ -86,11 +97,81 @@ def load_bills(path: Path) -> list[dict]:
     return bills
 
 
+def detect_state(record: dict, fallback_id: str) -> str:
+    """Find a 2-letter US state code in the record."""
+    for key in ("jurisdiction", "state", "locale"):
+        v = record.get(key)
+        if isinstance(v, str) and len(v) <= 4:
+            return v.upper().strip()
+        if isinstance(v, dict):
+            for sub in ("name", "id", "classification"):
+                sv = v.get(sub)
+                if isinstance(sv, str) and len(sv) <= 4:
+                    return sv.upper().strip()
+
+    bill = record.get("bill") or {}
+    for key in ("jurisdiction", "state"):
+        v = bill.get(key)
+        if isinstance(v, str) and len(v) <= 4:
+            return v.upper().strip()
+
+    rid = record.get("id") or fallback_id or ""
+    m = re.match(r"^([a-z]{2})[-_/]", rid, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+
+    return ""
+
+
+def find_url_in_record(record: dict) -> str:
+    """
+    Walk the record looking for the first plausible URL pointing to an
+    official source. Govbot's data uses a `sources` array on the bill;
+    different scrapers may also stash URLs under `versions`, `documents`,
+    `links`, or even directly on `log.action`.
+    """
+    bill = record.get("bill") or {}
+    log = record.get("log") or {}
+
+    # 1) bill.sources is the canonical OpenStates field — usually has
+    #    {"url": "...", "note": "..."} entries.
+    for collection_name in ("sources", "links", "versions", "documents"):
+        items = bill.get(collection_name) or []
+        if isinstance(items, list):
+            for item in items:
+                url = _extract_url_from(item)
+                if url:
+                    return url
+
+    # 2) Sometimes the action itself has a link.
+    action = log.get("action") or {}
+    url = _extract_url_from(action)
+    if url:
+        return url
+
+    # 3) Top-level url fields, just in case.
+    for key in ("url", "uri", "link", "openstates_url"):
+        v = record.get(key) or bill.get(key)
+        if isinstance(v, str) and v.startswith("http"):
+            return v
+
+    return ""
+
+
+def _extract_url_from(obj) -> str:
+    """Pull a URL out of a string or dict; return '' if nothing usable."""
+    if isinstance(obj, str) and obj.startswith("http"):
+        return obj
+    if isinstance(obj, dict):
+        for key in ("url", "uri", "link", "href"):
+            v = obj.get(key)
+            if isinstance(v, str) and v.startswith("http"):
+                return v
+    return ""
+
+
 def extract_fields(record: dict) -> dict | None:
-    """
-    Pull the fields we care about out of a govbot log record. Returns None if
-    the record doesn't look like a bill log entry we can use.
-    """
+    """Pull the fields we care about. Returns None if record isn't usable."""
     bill = record.get("bill") or {}
     log = record.get("log") or {}
 
@@ -98,6 +179,9 @@ def extract_fields(record: dict) -> dict | None:
     title = bill.get("title") or ""
     if not identifier or not title:
         return None
+
+    state = detect_state(record, identifier)
+    record_url = find_url_in_record(record)
 
     abstracts = bill.get("abstracts") or []
     abstract = ""
@@ -121,19 +205,17 @@ def extract_fields(record: dict) -> dict | None:
     action_desc = action.get("description") or ""
     action_date = action.get("date") or ""
 
-    # A unique, stable id for dedup. Combine bill identifier + action date + a
-    # truncated description hash so we don't keep posting the same bill every
-    # time it gets a new committee read. If you'd rather post each bill ONCE
-    # ever, change this to just `identifier`.
-    dedup_key = f"{identifier}|{action_date}|{action_desc[:40]}"
+    dedup_key = f"{state}|{identifier}|{action_date}|{action_desc[:40]}"
 
     return {
+        "state": state,
         "identifier": identifier,
         "title": title,
         "abstract": abstract,
         "sponsor": sponsor,
         "action_desc": action_desc,
         "action_date": action_date,
+        "record_url": record_url,
         "dedup_key": dedup_key,
     }
 
@@ -148,7 +230,6 @@ def is_transportation(b: dict) -> bool:
 # ---------------------------------------------------------------------------
 
 def summarize(b: dict) -> str:
-    """One neutral sentence under ~180 chars. Falls back to truncated abstract."""
     abstract = b["abstract"].strip()
     if not ANTHROPIC_KEY:
         return abstract[:180] if abstract else b["title"][:180]
@@ -209,26 +290,28 @@ class BlueskyClient:
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "embed": {
+        }
+
+        if link_url:
+            record["embed"] = {
                 "$type": "app.bsky.embed.external",
                 "external": {
                     "uri": link_url,
                     "title": embed_title[:300],
                     "description": embed_desc[:1000],
                 },
-            },
-        }
+            }
 
-        # Make the URL within `text` a clickable facet (UTF-8 byte offsets).
-        if link_url and link_url in text:
-            tb = text.encode("utf-8")
-            ub = link_url.encode("utf-8")
-            start = tb.find(ub)
-            if start >= 0:
-                record["facets"] = [{
-                    "index": {"byteStart": start, "byteEnd": start + len(ub)},
-                    "features": [{"$type": "app.bsky.richtext.facet#link", "uri": link_url}],
-                }]
+            # Make the URL within `text` a clickable facet (UTF-8 byte offsets).
+            if link_url in text:
+                tb = text.encode("utf-8")
+                ub = link_url.encode("utf-8")
+                start = tb.find(ub)
+                if start >= 0:
+                    record["facets"] = [{
+                        "index": {"byteStart": start, "byteEnd": start + len(ub)},
+                        "features": [{"$type": "app.bsky.richtext.facet#link", "uri": link_url}],
+                    }]
 
         r = self.session.post(
             f"{BLUESKY_API}/com.atproto.repo.createRecord",
@@ -248,14 +331,27 @@ class BlueskyClient:
 # ---------------------------------------------------------------------------
 
 def ilga_link(identifier: str) -> str:
-    """Build an ILGA bill-status URL from an identifier like 'HB1234' or 'SB567'."""
+    """Build an Illinois ILGA bill-status URL. Returns '' if identifier doesn't fit."""
     m = re.match(r"^\s*([HhSs][BbRrJjMm]?)\s*0*(\d+)\s*$", identifier or "")
     if not m:
         return ""
     prefix = m.group(1).upper()
     num = m.group(2)
-    # Common cases. ILGA's URL scheme: DocTypeID is HB/SB/HR/SR/etc.
     return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={num}&GAID=17&GA=104&DocTypeID={prefix}"
+
+
+def link_for(b: dict) -> str:
+    """
+    Pick the best link for this bill, in priority order:
+      1) URL embedded in the govbot record (canonical/official source)
+      2) Illinois ILGA URL if it's an IL bill
+      3) Empty string (we'll skip the link rather than post a broken one)
+    """
+    if b.get("record_url"):
+        return b["record_url"]
+    if b.get("state") == "IL":
+        return ilga_link(b["identifier"])
+    return ""
 
 
 def emoji_for(title: str, abstract: str) -> str:
@@ -263,47 +359,42 @@ def emoji_for(title: str, abstract: str) -> str:
     if any(w in s for w in ("transit", "cta", "metra", "pace", "bus", "subway")): return "🚇"
     if any(w in s for w in ("rail", "amtrak", "railroad", "railway")):           return "🚆"
     if any(w in s for w in ("airport", "aviation")):                             return "✈️"
-    if any(w in s for w in ("bicycle", "bike lane")):                            return "🚲"
+    if any(w in s for w in ("bicycle", "bike lane", "cyclist")):                 return "🚲"
     if any(w in s for w in ("pedestrian", "sidewalk", "crosswalk")):             return "🚶"
     if any(w in s for w in ("electric vehicle", "ev charging")):                 return "🔌"
     if any(w in s for w in ("highway", "tollway", "expressway", "interstate")):  return "🛣️"
+    if any(w in s for w in ("truck", "freight", "commercial vehicle")):          return "🚛"
     return "🚗"
 
 
+# 🔗 + space prefix before the URL
+LINK_PREFIX = "🔗 "
+
+
 def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
-    """
-    Returns (text, link_url, embed_title, embed_description).
-    Text layout (under MAX_POST chars including the link):
-        <emoji> IL <ID> — <Title>
-
-        <summary>
-
-        <link>
-    """
+    """Returns (text, link_url, embed_title, embed_description)."""
     emoji = emoji_for(b["title"], b["abstract"])
-    link = ilga_link(b["identifier"])
-    link_block = f"\n\n{link}" if link else ""
+    link = link_for(b)
+    link_block = f"\n\n{LINK_PREFIX}{link}" if link else ""
 
+    state_label = b["state"] or "?"
     title = b["title"].strip()
-    head = f"{emoji} IL {b['identifier']} — {title}"
+    head = f"{emoji} {state_label} {b['identifier']} — {title}"
 
     body = f"{head}\n\n{summary.strip()}"
     if len(body + link_block) > MAX_POST:
-        # Trim summary first.
         overflow = len(body + link_block) - MAX_POST
         if len(summary) > overflow + 1:
             summary = summary[: max(0, len(summary) - overflow - 1)].rstrip() + "…"
             body = f"{head}\n\n{summary}"
         else:
-            # Fall back to trimming the title.
-            avail = MAX_POST - len(link_block) - len(emoji) - len(f" IL {b['identifier']} — ") - 1
+            avail = MAX_POST - len(link_block) - len(emoji) - len(f" {state_label} {b['identifier']} — ") - 1
             title = title[:max(0, avail)].rstrip() + "…"
-            head = f"{emoji} IL {b['identifier']} — {title}"
+            head = f"{emoji} {state_label} {b['identifier']} — {title}"
             body = f"{head}\n\n{summary[:120]}"
 
     text = body + link_block
-
-    embed_title = f"IL {b['identifier']}: {b['title']}"[:300]
+    embed_title = f"{state_label} {b['identifier']}: {b['title']}"[:300]
     embed_desc = b["abstract"][:280] if b["abstract"] else summary
     return text, link, embed_title, embed_desc
 
@@ -357,7 +448,6 @@ def main() -> int:
     if not candidates:
         return 0
 
-    # Newest action first.
     def sort_key(b: dict):
         try:
             return datetime.strptime(b["action_date"], "%Y-%m-%d")
@@ -373,7 +463,7 @@ def main() -> int:
     for b in to_post:
         summary = summarize(b)
         text, link, ec_title, ec_desc = compose_post(b, summary)
-        print(f"\n--- {b['identifier']} ({b['action_date']}) ---")
+        print(f"\n--- {b['state']} {b['identifier']} ({b['action_date']}) ---")
         print(text)
         print("---")
 
