@@ -3,15 +3,6 @@
 Filter govbot's bills.jsonl for transportation-related bills across multiple
 states, dedupe against state/posted.json, summarize with Claude, and post to
 Bluesky.
-
-Env vars (required at post time):
-    BLUESKY_HANDLE
-    BLUESKY_APP_PASSWORD
-    ANTHROPIC_API_KEY     (optional — falls back to abstract if missing)
-
-Optional:
-    POST_LIMIT            max posts per run (default 3)
-    DRY_RUN               if "1", print what would be posted but don't post
 """
 
 from __future__ import annotations
@@ -41,9 +32,14 @@ BLUESKY_API = "https://bsky.social/xrpc"
 ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 
-# ---------------------------------------------------------------------------
-# Transportation keywords. Whole-word matching, case-insensitive.
-# ---------------------------------------------------------------------------
+# Set of recognized US state codes for filtering plausible matches.
+US_STATES = {
+    "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+    "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+    "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+    "VA","WA","WV","WI","WY","DC","PR","GU","VI","AS","MP",
+}
+
 TRANSPORTATION_KEYWORDS = [
     "transportation", "transit", "rail", "railroad", "railway",
     "subway", "streetcar", "light rail", "commuter rail", "ferry",
@@ -72,11 +68,12 @@ _KEYWORD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-MAX_POST = 290  # Bluesky's hard limit is 300 graphemes; stay under.
+MAX_POST = 290
+LINK_PREFIX = "🔗 "
 
 
 # ---------------------------------------------------------------------------
-# Loading & normalizing bills
+# Loading
 # ---------------------------------------------------------------------------
 
 def load_bills(path: Path) -> list[dict]:
@@ -97,44 +94,77 @@ def load_bills(path: Path) -> list[dict]:
     return bills
 
 
-def detect_state(record: dict, fallback_id: str) -> str:
-    """Find a 2-letter US state code in the record."""
-    for key in ("jurisdiction", "state", "locale"):
+def detect_state(record: dict) -> str:
+    """
+    Look for a 2-letter US state code in many possible places. Returns 'XX' if
+    we can't find one — caller can decide what to do with that.
+    """
+    candidates = []
+
+    # Top-level fields
+    for key in ("jurisdiction", "state", "locale", "scope"):
         v = record.get(key)
-        if isinstance(v, str) and len(v) <= 4:
-            return v.upper().strip()
-        if isinstance(v, dict):
-            for sub in ("name", "id", "classification"):
+        if isinstance(v, str):
+            candidates.append(v)
+        elif isinstance(v, dict):
+            for sub in ("name", "id", "classification", "abbreviation"):
                 sv = v.get(sub)
-                if isinstance(sv, str) and len(sv) <= 4:
-                    return sv.upper().strip()
+                if isinstance(sv, str):
+                    candidates.append(sv)
 
+    # Inside bill
     bill = record.get("bill") or {}
-    for key in ("jurisdiction", "state"):
+    for key in ("jurisdiction", "state", "scope"):
         v = bill.get(key)
-        if isinstance(v, str) and len(v) <= 4:
-            return v.upper().strip()
+        if isinstance(v, str):
+            candidates.append(v)
+        elif isinstance(v, dict):
+            for sub in ("name", "id", "classification", "abbreviation"):
+                sv = v.get(sub)
+                if isinstance(sv, str):
+                    candidates.append(sv)
 
-    rid = record.get("id") or fallback_id or ""
+    # Govbot ids often look like "ocd-bill/foo" with state buried elsewhere; also
+    # check `bill.openstates_url` and other fields where the state code lives in the URL.
+    for url_key in ("openstates_url", "url", "uri"):
+        u = bill.get(url_key) or record.get(url_key)
+        if isinstance(u, str):
+            m = re.search(r"openstates\.org/([a-z]{2})/", u, re.IGNORECASE)
+            if m:
+                candidates.append(m.group(1))
+            m = re.search(r"/([a-z]{2})[-_/]?bills?/", u, re.IGNORECASE)
+            if m:
+                candidates.append(m.group(1))
+
+    # File path leak: govbot's records sometimes contain `_filepath` or similar
+    for k, v in record.items():
+        if "path" in k.lower() and isinstance(v, str):
+            m = re.search(r"/(?:repos|data)/([a-z]{2})/", v, re.IGNORECASE)
+            if m:
+                candidates.append(m.group(1))
+
+    # Filter to recognized 2-letter US codes
+    for c in candidates:
+        c = c.strip().upper()
+        if len(c) == 2 and c in US_STATES:
+            return c
+
+    # Last-ditch: try parsing record id like "il-2025-SB857"
+    rid = record.get("id") or ""
     m = re.match(r"^([a-z]{2})[-_/]", rid, re.IGNORECASE)
     if m:
-        return m.group(1).upper()
+        code = m.group(1).upper()
+        if code in US_STATES:
+            return code
 
     return ""
 
 
 def find_url_in_record(record: dict) -> str:
-    """
-    Walk the record looking for the first plausible URL pointing to an
-    official source. Govbot's data uses a `sources` array on the bill;
-    different scrapers may also stash URLs under `versions`, `documents`,
-    `links`, or even directly on `log.action`.
-    """
+    """Look for a real source URL anywhere reasonable in the record."""
     bill = record.get("bill") or {}
     log = record.get("log") or {}
 
-    # 1) bill.sources is the canonical OpenStates field — usually has
-    #    {"url": "...", "note": "..."} entries.
     for collection_name in ("sources", "links", "versions", "documents"):
         items = bill.get(collection_name) or []
         if isinstance(items, list):
@@ -143,13 +173,11 @@ def find_url_in_record(record: dict) -> str:
                 if url:
                     return url
 
-    # 2) Sometimes the action itself has a link.
     action = log.get("action") or {}
     url = _extract_url_from(action)
     if url:
         return url
 
-    # 3) Top-level url fields, just in case.
     for key in ("url", "uri", "link", "openstates_url"):
         v = record.get(key) or bill.get(key)
         if isinstance(v, str) and v.startswith("http"):
@@ -159,7 +187,6 @@ def find_url_in_record(record: dict) -> str:
 
 
 def _extract_url_from(obj) -> str:
-    """Pull a URL out of a string or dict; return '' if nothing usable."""
     if isinstance(obj, str) and obj.startswith("http"):
         return obj
     if isinstance(obj, dict):
@@ -171,7 +198,6 @@ def _extract_url_from(obj) -> str:
 
 
 def extract_fields(record: dict) -> dict | None:
-    """Pull the fields we care about. Returns None if record isn't usable."""
     bill = record.get("bill") or {}
     log = record.get("log") or {}
 
@@ -180,7 +206,7 @@ def extract_fields(record: dict) -> dict | None:
     if not identifier or not title:
         return None
 
-    state = detect_state(record, identifier)
+    state = detect_state(record)
     record_url = find_url_in_record(record)
 
     abstracts = bill.get("abstracts") or []
@@ -226,13 +252,23 @@ def is_transportation(b: dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Summarization
+# Summarization (with verbose error logging this time)
 # ---------------------------------------------------------------------------
 
 def summarize(b: dict) -> str:
-    abstract = b["abstract"].strip()
+    """One neutral sentence under ~180 chars. Falls back to abstract if needed."""
+    abstract = (b["abstract"] or "").strip()
+    title = b["title"].strip()
+
+    # If title and abstract are the same (common for some states), just use the title.
+    fallback = abstract if abstract and abstract.lower() != title.lower() else ""
+    fallback = fallback[:180] if fallback else title[:180]
+
     if not ANTHROPIC_KEY:
-        return abstract[:180] if abstract else b["title"][:180]
+        return fallback
+
+    # Use the title alone if abstract is empty or duplicates the title.
+    body_for_prompt = abstract if (abstract and abstract.lower() != title.lower()) else title
 
     prompt = (
         "You are summarizing a US legislative bill for a civic-engagement Bluesky bot "
@@ -240,8 +276,8 @@ def summarize(b: dict) -> str:
         "characters) describing what the bill does, neutrally. No emoji, no hashtags, "
         "no editorializing, no quotes around the summary, no leading phrase like 'This "
         "bill'. Just the substance.\n\n"
-        f"Title: {b['title']}\n"
-        f"Abstract: {abstract[:2000]}"
+        f"Title: {title}\n"
+        f"Description: {body_for_prompt[:2000]}"
     )
 
     try:
@@ -259,13 +295,16 @@ def summarize(b: dict) -> str:
             },
             timeout=30,
         )
-        r.raise_for_status()
+        if not r.ok:
+            # Print the actual response body so we can see what Anthropic is complaining about.
+            print(f"  ! Anthropic {r.status_code}: {r.text[:500]}", file=sys.stderr)
+            r.raise_for_status()
         data = r.json()
         text = "".join(blk.get("text", "") for blk in data.get("content", []) if blk.get("type") == "text")
         return text.strip().strip('"').strip()
     except Exception as e:
-        print(f"  ! summarization failed, using abstract: {e}", file=sys.stderr)
-        return (abstract or b["title"])[:180]
+        print(f"  ! summarization failed, using fallback: {e}", file=sys.stderr)
+        return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -301,8 +340,6 @@ class BlueskyClient:
                     "description": embed_desc[:1000],
                 },
             }
-
-            # Make the URL within `text` a clickable facet (UTF-8 byte offsets).
             if link_url in text:
                 tb = text.encode("utf-8")
                 ub = link_url.encode("utf-8")
@@ -331,22 +368,13 @@ class BlueskyClient:
 # ---------------------------------------------------------------------------
 
 def ilga_link(identifier: str) -> str:
-    """Build an Illinois ILGA bill-status URL. Returns '' if identifier doesn't fit."""
     m = re.match(r"^\s*([HhSs][BbRrJjMm]?)\s*0*(\d+)\s*$", identifier or "")
     if not m:
         return ""
-    prefix = m.group(1).upper()
-    num = m.group(2)
-    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={num}&GAID=17&GA=104&DocTypeID={prefix}"
+    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={m.group(2)}&GAID=17&GA=104&DocTypeID={m.group(1).upper()}"
 
 
 def link_for(b: dict) -> str:
-    """
-    Pick the best link for this bill, in priority order:
-      1) URL embedded in the govbot record (canonical/official source)
-      2) Illinois ILGA URL if it's an IL bill
-      3) Empty string (we'll skip the link rather than post a broken one)
-    """
     if b.get("record_url"):
         return b["record_url"]
     if b.get("state") == "IL":
@@ -367,31 +395,39 @@ def emoji_for(title: str, abstract: str) -> str:
     return "🚗"
 
 
-# 🔗 + space prefix before the URL
-LINK_PREFIX = "🔗 "
-
-
 def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
-    """Returns (text, link_url, embed_title, embed_description)."""
     emoji = emoji_for(b["title"], b["abstract"])
     link = link_for(b)
     link_block = f"\n\n{LINK_PREFIX}{link}" if link else ""
 
     state_label = b["state"] or "?"
     title = b["title"].strip()
-    head = f"{emoji} {state_label} {b['identifier']} — {title}"
+    summary = summary.strip()
 
-    body = f"{head}\n\n{summary.strip()}"
+    # Avoid showing the title twice if the summary is just the same text.
+    if summary.lower() == title.lower():
+        body_extra = ""  # head alone is enough
+    else:
+        body_extra = f"\n\n{summary}"
+
+    head = f"{emoji} {state_label} {b['identifier']} — {title}"
+    body = head + body_extra
+
     if len(body + link_block) > MAX_POST:
-        overflow = len(body + link_block) - MAX_POST
-        if len(summary) > overflow + 1:
-            summary = summary[: max(0, len(summary) - overflow - 1)].rstrip() + "…"
-            body = f"{head}\n\n{summary}"
-        else:
+        # Trim summary first.
+        if body_extra:
+            overflow = len(body + link_block) - MAX_POST
+            new_len = max(0, len(summary) - overflow - 1)
+            if new_len > 20:
+                summary = summary[:new_len].rstrip() + "…"
+                body_extra = f"\n\n{summary}"
+                body = head + body_extra
+        # If still too long, trim the title.
+        if len(body + link_block) > MAX_POST:
             avail = MAX_POST - len(link_block) - len(emoji) - len(f" {state_label} {b['identifier']} — ") - 1
             title = title[:max(0, avail)].rstrip() + "…"
             head = f"{emoji} {state_label} {b['identifier']} — {title}"
-            body = f"{head}\n\n{summary[:120]}"
+            body = head + body_extra
 
     text = body + link_block
     embed_title = f"{state_label} {b['identifier']}: {b['title']}"[:300]
@@ -400,7 +436,7 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
 
 
 # ---------------------------------------------------------------------------
-# State
+# State persistence
 # ---------------------------------------------------------------------------
 
 def load_state() -> dict:
@@ -429,6 +465,12 @@ def main() -> int:
     records = load_bills(JSONL_PATH)
     if not records:
         return 0
+
+    # One-time debug: show the keys of the first record so we can see govbot's actual shape.
+    if records:
+        print(f"DEBUG first record top-level keys: {sorted(records[0].keys())}")
+        first_bill = records[0].get("bill") or {}
+        print(f"DEBUG first bill keys: {sorted(first_bill.keys())}")
 
     state = load_state()
     seen = set(state.get("posted", []))
@@ -463,7 +505,7 @@ def main() -> int:
     for b in to_post:
         summary = summarize(b)
         text, link, ec_title, ec_desc = compose_post(b, summary)
-        print(f"\n--- {b['state']} {b['identifier']} ({b['action_date']}) ---")
+        print(f"\n--- {b['state'] or '?'} {b['identifier']} ({b['action_date']}) ---")
         print(text)
         print("---")
 
