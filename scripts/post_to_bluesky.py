@@ -212,37 +212,50 @@ def best_display_text(b: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _format_date(yyyy_mm_dd: str) -> str:
+    """'2025-05-08' -> 'May 8, 2025'. Uses a period after abbreviations
+    (e.g. 'Nov.', 'Sept.') for months that are commonly abbreviated.
+    May, June, and July are short enough to spell out in full."""
     try:
         d = datetime.strptime(yyyy_mm_dd, "%Y-%m-%d")
-        return d.strftime("%B %-d, %Y")
     except ValueError:
         return ""
+    # AP-style month abbreviations
+    abbrev = {1:"Jan.", 2:"Feb.", 3:"March", 4:"April", 5:"May", 6:"June",
+              7:"July", 8:"Aug.", 9:"Sept.", 10:"Oct.", 11:"Nov.", 12:"Dec."}
+    return f"{abbrev[d.month]} {d.day}, {d.year}"
 
 
 def _smart_case(s: str) -> str:
+    """Convert SHOUTY ALL-CAPS to Title Case; capitalize first letter of
+    other strings; leave already-mixed-case alone otherwise."""
     s = s.strip().rstrip(".")
     if not s:
         return s
     letters = [c for c in s if c.isalpha()]
     if letters and sum(1 for c in letters if c.isupper()) / len(letters) > 0.7:
+        # All-caps -> Title Case (with small words lowercase except the first)
         small = {"a","an","and","of","or","the","to","by","in","on","for","with","at"}
         words = s.lower().split()
         out = []
         for i, w in enumerate(words):
             out.append(w.capitalize() if (i == 0 or w not in small) else w)
         return " ".join(out)
-    return s
+    # Otherwise, just ensure the first character is capitalized.
+    return s[0].upper() + s[1:] if s[0].isalpha() else s
 
 
 def format_action_line(action_desc: str, date_yyyy_mm_dd: str) -> str:
+    """Produces 'Nov. 4, 2025: Placed on third reading.' or partial variants."""
     desc = _smart_case(action_desc)
     nice_date = _format_date(date_yyyy_mm_dd)
     if desc and nice_date:
-        return f"{desc} on {nice_date}"
-    if desc:
-        return desc
+        # Make sure the description ends with a period.
+        desc_with_period = desc if desc.endswith((".", "!", "?")) else desc + "."
+        return f"{nice_date}: {desc_with_period}"
     if nice_date:
         return f"Latest action: {nice_date}"
+    if desc:
+        return desc
     return ""
 
 
@@ -475,14 +488,16 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
     if len(text) > MAX_POST and action_block and action_line:
         nice_date = _format_date(b["action_date"])
         if nice_date:
-            date_suffix = f" on {nice_date}"
-            desc_part = action_line[: -len(date_suffix)] if action_line.endswith(date_suffix) else action_line
-            overflow = len(text) - MAX_POST
-            new_len = max(0, len(desc_part) - overflow - 1)
-            if new_len > 8:
-                action_line = desc_part[:new_len].rstrip() + "…" + date_suffix
-            else:
-                action_line = nice_date
+            date_prefix = f"{nice_date}: "
+            # Pull out the description portion (everything after the prefix)
+            if action_line.startswith(date_prefix):
+                desc_part = action_line[len(date_prefix):].rstrip(".!?")
+                overflow = len(text) - MAX_POST
+                new_len = max(0, len(desc_part) - overflow - 1)
+                if new_len > 8:
+                    action_line = date_prefix + desc_part[:new_len].rstrip() + "…"
+                else:
+                    action_line = nice_date  # fall back to just the date
             action_block = f"\n\n{action_line}"
         text = assemble(head, summary_block, action_block, link_block)
 
