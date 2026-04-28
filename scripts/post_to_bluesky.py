@@ -2,11 +2,13 @@
 """
 Filter govbot's bills.jsonl for transportation-related bills across multiple
 states, dedupe against state/posted.json, summarize with Claude, and post to
-Bluesky.
+Bluesky with rich link-card embeds (including a fetched OG image where
+available).
 """
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -14,6 +16,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse, urljoin
 
 import requests
 
@@ -32,6 +35,12 @@ BLUESKY_API = "https://bsky.social/xrpc"
 ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 
+# Image fetching limits — keep tight to avoid abuse and slow runs.
+IMG_MAX_DOWNLOAD = 5 * 1024 * 1024   # 5 MB cap on raw download
+IMG_TARGET_SIZE  = 900 * 1024        # ~900 KB target after resize (Bluesky caps at 976 KB)
+IMG_FETCH_TIMEOUT = 10               # seconds per request
+USER_AGENT = "Mozilla/5.0 (compatible; govbot-bluesky/1.0; +https://github.com/)"
+
 US_STATES = {
     "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
     "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
@@ -39,7 +48,6 @@ US_STATES = {
     "VA","WA","WV","WI","WY","DC","PR","GU","VI","AS","MP",
 }
 
-# Map 2-letter state codes to full names for the link-card title.
 STATE_FULL_NAME = {
     "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "MI": "Michigan",
     "MN": "Minnesota", "MO": "Missouri", "OH": "Ohio", "WI": "Wisconsin",
@@ -212,44 +220,34 @@ def best_display_text(b: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _format_date(yyyy_mm_dd: str) -> str:
-    """'2025-05-08' -> 'May 8, 2025'. Uses a period after abbreviations
-    (e.g. 'Nov.', 'Sept.') for months that are commonly abbreviated.
-    May, June, and July are short enough to spell out in full."""
     try:
         d = datetime.strptime(yyyy_mm_dd, "%Y-%m-%d")
     except ValueError:
         return ""
-    # AP-style month abbreviations
     abbrev = {1:"Jan.", 2:"Feb.", 3:"March", 4:"April", 5:"May", 6:"June",
               7:"July", 8:"Aug.", 9:"Sept.", 10:"Oct.", 11:"Nov.", 12:"Dec."}
     return f"{abbrev[d.month]} {d.day}, {d.year}"
 
 
 def _smart_case(s: str) -> str:
-    """Convert SHOUTY ALL-CAPS to Title Case; capitalize first letter of
-    other strings; leave already-mixed-case alone otherwise."""
     s = s.strip().rstrip(".")
     if not s:
         return s
     letters = [c for c in s if c.isalpha()]
     if letters and sum(1 for c in letters if c.isupper()) / len(letters) > 0.7:
-        # All-caps -> Title Case (with small words lowercase except the first)
         small = {"a","an","and","of","or","the","to","by","in","on","for","with","at"}
         words = s.lower().split()
         out = []
         for i, w in enumerate(words):
             out.append(w.capitalize() if (i == 0 or w not in small) else w)
         return " ".join(out)
-    # Otherwise, just ensure the first character is capitalized.
     return s[0].upper() + s[1:] if s[0].isalpha() else s
 
 
 def format_action_line(action_desc: str, date_yyyy_mm_dd: str) -> str:
-    """Produces 'Nov. 4, 2025: Placed on third reading.' or partial variants."""
     desc = _smart_case(action_desc)
     nice_date = _format_date(date_yyyy_mm_dd)
     if desc and nice_date:
-        # Make sure the description ends with a period.
         desc_with_period = desc if desc.endswith((".", "!", "?")) else desc + "."
         return f"{nice_date}: {desc_with_period}"
     if nice_date:
@@ -257,6 +255,142 @@ def format_action_line(action_desc: str, date_yyyy_mm_dd: str) -> str:
     if desc:
         return desc
     return ""
+
+
+# ---------------------------------------------------------------------------
+# OG image fetching (NEW)
+# ---------------------------------------------------------------------------
+
+_OG_IMAGE_PATTERNS = [
+    re.compile(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', re.IGNORECASE),
+    re.compile(r'<meta\s+content=["\']([^"\']+)["\']\s+property=["\']og:image["\']', re.IGNORECASE),
+    re.compile(r'<meta\s+name=["\']twitter:image["\']\s+content=["\']([^"\']+)["\']', re.IGNORECASE),
+    re.compile(r'<meta\s+content=["\']([^"\']+)["\']\s+name=["\']twitter:image["\']', re.IGNORECASE),
+]
+
+
+def _extract_og_image_url(html: str, base_url: str) -> str:
+    """Pull an absolute OG image URL out of an HTML page, or '' if none found."""
+    # Limit how much HTML we scan — OG tags are always in <head>.
+    head_only = html[:40000]
+    for pat in _OG_IMAGE_PATTERNS:
+        m = pat.search(head_only)
+        if m:
+            url = m.group(1).strip()
+            # Decode common HTML entities in the URL itself.
+            url = url.replace("&amp;", "&")
+            return urljoin(base_url, url)
+    return ""
+
+
+def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
+    """
+    Fetch the OG image referenced from `page_url`.
+    Returns (raw_bytes, mime_type) on success, or None on any failure.
+    Only fetches images from the SAME hostname as the page (security).
+    """
+    try:
+        page_host = urlparse(page_url).netloc.lower()
+        if not page_host:
+            return None
+
+        headers = {"User-Agent": USER_AGENT}
+
+        # Step 1: download the bill page HTML (cap size, short timeout)
+        r = requests.get(page_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
+        r.raise_for_status()
+        ctype = r.headers.get("content-type", "").lower()
+        if "html" not in ctype:
+            return None
+
+        html_bytes = b""
+        for chunk in r.iter_content(chunk_size=8192):
+            html_bytes += chunk
+            if len(html_bytes) > 500_000:  # 500 KB of HTML is plenty for og tags
+                break
+        try:
+            html = html_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+
+        img_url = _extract_og_image_url(html, page_url)
+        if not img_url:
+            return None
+
+        # Step 2: only allow images from the same hostname (no off-site CDNs)
+        img_host = urlparse(img_url).netloc.lower()
+        if img_host and img_host != page_host:
+            # Allow the case where it's a www subdomain difference, e.g.
+            # page = ilga.gov, image = www.ilga.gov
+            if img_host.lstrip("www.") != page_host.lstrip("www."):
+                print(f"  - og:image is off-site ({img_host}), skipping", file=sys.stderr)
+                return None
+
+        # Step 3: download the image (cap size)
+        ir = requests.get(img_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
+        ir.raise_for_status()
+
+        img_bytes = b""
+        for chunk in ir.iter_content(chunk_size=16384):
+            img_bytes += chunk
+            if len(img_bytes) > IMG_MAX_DOWNLOAD:
+                print(f"  - og:image too large (>{IMG_MAX_DOWNLOAD//1024} KB), skipping", file=sys.stderr)
+                return None
+
+        mime = ir.headers.get("content-type", "").split(";")[0].strip().lower() or "image/jpeg"
+        if not mime.startswith("image/"):
+            return None
+        # Bluesky doesn't accept SVG.
+        if "svg" in mime:
+            return None
+
+        return (img_bytes, mime)
+    except Exception as e:
+        print(f"  - og:image fetch failed: {e}", file=sys.stderr)
+        return None
+
+
+def prepare_image_for_bluesky(img_bytes: bytes, mime: str) -> tuple[bytes, str] | None:
+    """
+    Resize/recompress so the image fits under Bluesky's blob limit (~976 KB).
+    Returns (new_bytes, new_mime) or None if Pillow can't open it.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        # If Pillow isn't installed, fall back to using the original bytes
+        # only if they're already small enough.
+        return (img_bytes, mime) if len(img_bytes) <= IMG_TARGET_SIZE else None
+
+    try:
+        im = Image.open(io.BytesIO(img_bytes))
+    except Exception as e:
+        print(f"  - Pillow couldn't open the image: {e}", file=sys.stderr)
+        return None
+
+    # If already small enough and a normal format, just return as-is.
+    if len(img_bytes) <= IMG_TARGET_SIZE and mime in ("image/jpeg", "image/png", "image/webp"):
+        return (img_bytes, mime)
+
+    # Otherwise, recompress as JPEG with progressive quality reduction.
+    if im.mode in ("RGBA", "LA", "P"):
+        im = im.convert("RGB")  # JPEG can't do alpha
+
+    # Cap dimensions — most OG images don't need to be huge.
+    max_side = 1600
+    if max(im.size) > max_side:
+        ratio = max_side / max(im.size)
+        new_size = (int(im.size[0] * ratio), int(im.size[1] * ratio))
+        im = im.resize(new_size, Image.Resampling.LANCZOS)
+
+    for quality in (85, 75, 65, 55, 45):
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=quality, optimize=True)
+        data = buf.getvalue()
+        if len(data) <= IMG_TARGET_SIZE:
+            return (data, "image/jpeg")
+
+    return None  # couldn't get it small enough
 
 
 # ---------------------------------------------------------------------------
@@ -318,17 +452,38 @@ class BlueskyClient:
         self.did = d["did"]
         self.session.headers["Authorization"] = f"Bearer {d['accessJwt']}"
 
-    def post(self, text: str, link_url: str, embed_title: str, embed_desc: str) -> dict:
+    def upload_blob(self, data: bytes, mime: str) -> dict | None:
+        """Upload binary data to Bluesky's blob storage. Returns the blob ref dict."""
+        try:
+            r = self.session.post(
+                f"{BLUESKY_API}/com.atproto.repo.uploadBlob",
+                data=data,
+                headers={"Content-Type": mime},
+                timeout=30,
+            )
+            r.raise_for_status()
+            return r.json().get("blob")
+        except Exception as e:
+            print(f"  - blob upload failed: {e}", file=sys.stderr)
+            return None
+
+    def post(self, text: str, link_url: str, embed_title: str, embed_desc: str,
+             thumb_blob: dict | None = None) -> dict:
         record = {
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         if link_url:
-            record["embed"] = {
-                "$type": "app.bsky.embed.external",
-                "external": {"uri": link_url, "title": embed_title[:300], "description": embed_desc[:1000]},
+            external = {
+                "uri": link_url,
+                "title": embed_title[:300],
+                "description": embed_desc[:1000],
             }
+            if thumb_blob:
+                external["thumb"] = thumb_blob
+            record["embed"] = {"$type": "app.bsky.embed.external", "external": external}
+
             if link_url in text:
                 tb = text.encode("utf-8")
                 ub = link_url.encode("utf-8")
@@ -338,6 +493,7 @@ class BlueskyClient:
                         "index": {"byteStart": start, "byteEnd": start + len(ub)},
                         "features": [{"$type": "app.bsky.richtext.facet#link", "uri": link_url}],
                     }]
+
         r = self.session.post(
             f"{BLUESKY_API}/com.atproto.repo.createRecord",
             json={"repo": self.did, "collection": "app.bsky.feed.post", "record": record},
@@ -446,16 +602,6 @@ def emoji_for(b: dict) -> str:
 
 
 def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
-    """
-    Layout:
-        <emoji> <STATE> <ID> — <title or abstract>
-
-        <one-sentence summary>      ← skipped if absent or duplicates head
-
-        <action description on Month D, YYYY>   ← skipped if no action info
-
-        🔗 <link>                   ← skipped if no link
-    """
     emoji = emoji_for(b)
     link = link_for(b)
     link_block = f"\n\n{LINK_PREFIX}{link}" if link else ""
@@ -489,7 +635,6 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
         nice_date = _format_date(b["action_date"])
         if nice_date:
             date_prefix = f"{nice_date}: "
-            # Pull out the description portion (everything after the prefix)
             if action_line.startswith(date_prefix):
                 desc_part = action_line[len(date_prefix):].rstrip(".!?")
                 overflow = len(text) - MAX_POST
@@ -497,7 +642,7 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
                 if new_len > 8:
                     action_line = date_prefix + desc_part[:new_len].rstrip() + "…"
                 else:
-                    action_line = nice_date  # fall back to just the date
+                    action_line = nice_date
             action_block = f"\n\n{action_line}"
         text = assemble(head, summary_block, action_block, link_block)
 
@@ -508,14 +653,9 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
         head = f"{emoji} {state_label} {b['identifier']} — {display_trimmed}"
         text = assemble(head, summary_block, action_block, link_block)
 
-    # --- Link card content ---
-    # Title is just "<State Name> <ID>" so it doesn't echo the post text.
     state_name = STATE_FULL_NAME.get(b["state"], b["state"] or "Bill")
     embed_title = f"{state_name} {b['identifier']}"[:300]
-
-    # Description = abstract (preferred) or summary (fallback).
     embed_desc = (b["abstract"] or summary or display)[:280]
-
     return text, link, embed_title, embed_desc
 
 
@@ -588,15 +728,32 @@ def main() -> int:
     for b in to_post:
         summary = summarize(b)
         text, link, ec_title, ec_desc = compose_post(b, summary)
+
+        # Try to fetch and prepare an OG image for the link card.
+        thumb_blob = None
+        if link:
+            print(f"  fetching og:image for {link}", file=sys.stderr)
+            fetched = fetch_og_image(link)
+            if fetched:
+                prepared = prepare_image_for_bluesky(*fetched)
+                if prepared:
+                    img_bytes, img_mime = prepared
+                    if client:
+                        thumb_blob = client.upload_blob(img_bytes, img_mime)
+                        if thumb_blob:
+                            print(f"  ✓ og:image attached ({len(img_bytes)//1024} KB, {img_mime})", file=sys.stderr)
+                    else:
+                        print(f"  [dry-run] would attach image ({len(img_bytes)//1024} KB)", file=sys.stderr)
+                else:
+                    print(f"  - couldn't fit image under size cap", file=sys.stderr)
+
         print(f"\n--- {b['state'] or '?'} {b['identifier']} ({b['action_date']}) ---")
         print(text)
-        print(f"[card title: {ec_title!r}]")
-        print(f"[card desc:  {ec_desc[:80]!r}…]")
         print("---")
 
         if client:
             try:
-                client.post(text, link, ec_title, ec_desc)
+                client.post(text, link, ec_title, ec_desc, thumb_blob=thumb_blob)
                 time.sleep(2)
             except requests.HTTPError as e:
                 print(f"  ! post failed: {e.response.status_code} {e.response.text}", file=sys.stderr)
