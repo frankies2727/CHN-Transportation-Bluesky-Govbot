@@ -39,11 +39,24 @@ US_STATES = {
     "VA","WA","WV","WI","WY","DC","PR","GU","VI","AS","MP",
 }
 
-# Keywords have been tightened. Removed short agency abbreviations (cta, pace,
-# rta, idot, indot, modot, mdot, wsdot, cdl, dui, dwi) that cause false
-# positives. Kept long, specific terms that are unambiguous.
+# Map 2-letter state codes to full names for the link-card title.
+STATE_FULL_NAME = {
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "MI": "Michigan",
+    "MN": "Minnesota", "MO": "Missouri", "OH": "Ohio", "WI": "Wisconsin",
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine",
+    "MD": "Maryland", "MA": "Massachusetts", "MS": "Mississippi", "MT": "Montana",
+    "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+    "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota",
+    "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island",
+    "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas",
+    "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
+    "WV": "West Virginia", "WY": "Wyoming", "DC": "Washington D.C.",
+}
+
 TRANSPORTATION_KEYWORDS = [
-    # Modes & systems — full words only
     "transportation", "transit",
     "rail", "railroad", "railway", "amtrak", "metra",
     "subway", "streetcar", "light rail", "commuter rail",
@@ -56,20 +69,14 @@ TRANSPORTATION_KEYWORDS = [
     "ev charging", "electric vehicle", "autonomous vehicle",
     "scooter", "e-bike",
     "school bus", "bus driver", "bus drivers",
-
-    # Roads & infrastructure
     "highway", "tollway", "roadway", "expressway", "interstate",
     "tollbooth", "toll road", "toll bridge",
     "traffic signal", "traffic safety", "road construction",
     "complete streets", "vision zero", "pedestrian safety",
     "transportation infrastructure",
-
-    # Vehicles & licensing
     "motor vehicle", "motor fuel tax", "gas tax",
     "vehicle registration", "license plate", "driver's license",
     "speed limit", "seatbelt", "helmet law",
-
-    # Generic but useful
     "parking", "congestion", "traffic",
 ]
 
@@ -137,7 +144,6 @@ def detect_state(record: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _looks_like_code_title(title: str) -> bool:
-    """ALL-CAPS shorthand titles like 'CIVIL LAW-TECH'."""
     t = title.strip()
     if not t:
         return True
@@ -191,21 +197,53 @@ def extract_fields(record: dict) -> dict | None:
 
 
 def is_transportation(b: dict) -> bool:
-    """
-    Search ONLY the bill's substantive content (title, abstract, subject tags).
-    We deliberately exclude action_desc because committee names like 'referred
-    to Transportation Committee' would falsely match non-transportation bills
-    that just happen to be procedurally routed through such committees.
-    """
     haystack = " ".join([b["title"], b["abstract"], b["subjects"]]).lower()
     return bool(_KEYWORD_PATTERN.search(haystack))
 
 
 def best_display_text(b: dict) -> str:
-    """Prefer abstract over title for cryptic ALL-CAPS shorthand titles."""
     if _looks_like_code_title(b["title"]) and b["abstract"]:
         return b["abstract"]
     return b["title"]
+
+
+# ---------------------------------------------------------------------------
+# Action + date formatting
+# ---------------------------------------------------------------------------
+
+def _format_date(yyyy_mm_dd: str) -> str:
+    try:
+        d = datetime.strptime(yyyy_mm_dd, "%Y-%m-%d")
+        return d.strftime("%B %-d, %Y")
+    except ValueError:
+        return ""
+
+
+def _smart_case(s: str) -> str:
+    s = s.strip().rstrip(".")
+    if not s:
+        return s
+    letters = [c for c in s if c.isalpha()]
+    if letters and sum(1 for c in letters if c.isupper()) / len(letters) > 0.7:
+        small = {"a","an","and","of","or","the","to","by","in","on","for","with","at"}
+        words = s.lower().split()
+        out = []
+        for i, w in enumerate(words):
+            out.append(w.capitalize() if (i == 0 or w not in small) else w)
+        return " ".join(out)
+    return s
+
+
+def format_action_line(action_desc: str, date_yyyy_mm_dd: str) -> str:
+    desc = _smart_case(action_desc)
+    nice_date = _format_date(date_yyyy_mm_dd)
+    if desc and nice_date:
+        return f"{desc} on {nice_date}"
+    if desc:
+        return desc
+    if nice_date:
+        return f"Latest action: {nice_date}"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -215,11 +253,7 @@ def best_display_text(b: dict) -> str:
 def summarize(b: dict) -> str:
     abstract = (b["abstract"] or "").strip()
     title = b["title"].strip()
-
-    if abstract and abstract.lower() != title.lower():
-        fallback = abstract[:180]
-    else:
-        fallback = ""
+    fallback = abstract[:180] if (abstract and abstract.lower() != title.lower()) else ""
 
     if not ANTHROPIC_KEY:
         return fallback
@@ -239,13 +273,8 @@ def summarize(b: dict) -> str:
     try:
         r = requests.post(
             ANTHROPIC_API,
-            headers={
-                "x-api-key": ANTHROPIC_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={"model": ANTHROPIC_MODEL, "max_tokens": 200,
-                  "messages": [{"role": "user", "content": prompt}]},
+            headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            json={"model": ANTHROPIC_MODEL, "max_tokens": 200, "messages": [{"role": "user", "content": prompt}]},
             timeout=30,
         )
         if not r.ok:
@@ -326,68 +355,53 @@ def _year_from_session(session: str, default: str = "2025") -> str:
     return m.group(1) if m else default
 
 
-def link_il(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
+def link_il(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
     ga = _ga_from_session(session) or "104"
-    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={num}&GAID={ga}&GA={ga}&DocTypeID={prefix}"
+    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={n}&GAID={ga}&GA={ga}&DocTypeID={p}"
 
+def link_mi(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
+    return f"https://www.legislature.mi.gov/Search/Bills?bills={p}-{n}"
 
-def link_mi(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
-    return f"https://www.legislature.mi.gov/Search/Bills?bills={prefix}-{num}"
-
-
-def link_in(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
+def link_in(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
     year = _year_from_session(session, "2026")
-    chamber = "house" if prefix.startswith("H") else "senate"
-    return f"https://iga.in.gov/legislative/{year}/bills/{chamber}/{num}"
+    chamber = "house" if p.startswith("H") else "senate"
+    return f"https://iga.in.gov/legislative/{year}/bills/{chamber}/{n}"
 
+def link_ia(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
+    return f"https://www.legis.iowa.gov/legislation/BillBook?ga=91&ba={p}{n}"
 
-def link_ia(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
-    return f"https://www.legis.iowa.gov/legislation/BillBook?ga=91&ba={prefix}{num}"
+def link_oh(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
+    chamber = "house" if p.startswith("H") else "senate"
+    return f"https://www.legislature.ohio.gov/legislation/{chamber}-bill/{n}"
 
-
-def link_oh(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
-    chamber = "house" if prefix.startswith("H") else "senate"
-    return f"https://www.legislature.ohio.gov/legislation/{chamber}-bill/{num}"
-
-
-def link_wi(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
+def link_wi(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
     year = _year_from_session(session, "2025")
-    return f"https://docs.legis.wisconsin.gov/{year}/proposals/{prefix.lower()}{num}"
+    return f"https://docs.legis.wisconsin.gov/{year}/proposals/{p.lower()}{n}"
 
-
-def link_mn(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
+def link_mn(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
     year = _year_from_session(session, "2025")
-    chamber = "House" if prefix.startswith("H") else "Senate"
-    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={prefix}{num}&y={year}"
+    chamber = "House" if p.startswith("H") else "Senate"
+    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={p}{n}&y={year}"
 
-
-def link_mo(ident: str, session: str) -> str:
-    prefix, num = _split_identifier(ident)
-    if not (prefix and num):
-        return ""
-    chamber = "house" if prefix.startswith("H") else "senate"
-    return f"https://www.{chamber}.mo.gov/Bill.aspx?bill={prefix}{num}"
+def link_mo(ident, session):
+    p, n = _split_identifier(ident)
+    if not (p and n): return ""
+    chamber = "house" if p.startswith("H") else "senate"
+    return f"https://www.{chamber}.mo.gov/Bill.aspx?bill={p}{n}"
 
 
 STATE_LINK_BUILDERS = {
@@ -396,11 +410,9 @@ STATE_LINK_BUILDERS = {
 }
 
 
-def link_for(b: dict) -> str:
+def link_for(b):
     builder = STATE_LINK_BUILDERS.get(b.get("state", ""))
-    if builder:
-        return builder(b["identifier"], b.get("session", ""))
-    return ""
+    return builder(b["identifier"], b.get("session", "")) if builder else ""
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +433,16 @@ def emoji_for(b: dict) -> str:
 
 
 def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
+    """
+    Layout:
+        <emoji> <STATE> <ID> — <title or abstract>
+
+        <one-sentence summary>      ← skipped if absent or duplicates head
+
+        <action description on Month D, YYYY>   ← skipped if no action info
+
+        🔗 <link>                   ← skipped if no link
+    """
     emoji = emoji_for(b)
     link = link_for(b)
     link_block = f"\n\n{LINK_PREFIX}{link}" if link else ""
@@ -429,34 +451,56 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
     display = best_display_text(b).strip()
     summary = (summary or "").strip()
 
-    if not summary or summary.lower() == display.lower():
-        body_extra = ""
-    else:
-        body_extra = f"\n\n{summary}"
+    summary_block = f"\n\n{summary}" if (summary and summary.lower() != display.lower()) else ""
+    action_line = format_action_line(b["action_desc"], b["action_date"])
+    action_block = f"\n\n{action_line}" if action_line else ""
 
     head = f"{emoji} {state_label} {b['identifier']} — {display}"
-    body = head + body_extra
 
-    if len(body + link_block) > MAX_POST:
-        if body_extra:
-            overflow = len(body + link_block) - MAX_POST
-            new_len = max(0, len(summary) - overflow - 1)
-            if new_len > 20:
-                summary = summary[:new_len].rstrip() + "…"
-                body_extra = f"\n\n{summary}"
-                body = head + body_extra
+    def assemble(h, s, a, l):
+        return h + s + a + l
+
+    text = assemble(head, summary_block, action_block, link_block)
+
+    if len(text) > MAX_POST and summary_block:
+        overflow = len(text) - MAX_POST
+        new_len = max(0, len(summary) - overflow - 1)
+        if new_len > 20:
+            summary = summary[:new_len].rstrip() + "…"
+            summary_block = f"\n\n{summary}"
+        else:
+            summary_block = ""
+        text = assemble(head, summary_block, action_block, link_block)
+
+    if len(text) > MAX_POST and action_block and action_line:
+        nice_date = _format_date(b["action_date"])
+        if nice_date:
+            date_suffix = f" on {nice_date}"
+            desc_part = action_line[: -len(date_suffix)] if action_line.endswith(date_suffix) else action_line
+            overflow = len(text) - MAX_POST
+            new_len = max(0, len(desc_part) - overflow - 1)
+            if new_len > 8:
+                action_line = desc_part[:new_len].rstrip() + "…" + date_suffix
             else:
-                body_extra = ""
-                body = head
-        if len(body + link_block) > MAX_POST:
-            avail = MAX_POST - len(link_block) - len(emoji) - len(f" {state_label} {b['identifier']} — ") - 1
-            display = display[:max(0, avail)].rstrip() + "…"
-            head = f"{emoji} {state_label} {b['identifier']} — {display}"
-            body = head + body_extra
+                action_line = nice_date
+            action_block = f"\n\n{action_line}"
+        text = assemble(head, summary_block, action_block, link_block)
 
-    text = body + link_block
-    embed_title = f"{state_label} {b['identifier']}: {display}"[:300]
-    embed_desc = b["abstract"][:280] if b["abstract"] else summary
+    if len(text) > MAX_POST:
+        avail = MAX_POST - len(link_block) - len(summary_block) - len(action_block) \
+                - len(emoji) - len(f" {state_label} {b['identifier']} — ") - 1
+        display_trimmed = display[:max(0, avail)].rstrip() + "…"
+        head = f"{emoji} {state_label} {b['identifier']} — {display_trimmed}"
+        text = assemble(head, summary_block, action_block, link_block)
+
+    # --- Link card content ---
+    # Title is just "<State Name> <ID>" so it doesn't echo the post text.
+    state_name = STATE_FULL_NAME.get(b["state"], b["state"] or "Bill")
+    embed_title = f"{state_name} {b['identifier']}"[:300]
+
+    # Description = abstract (preferred) or summary (fallback).
+    embed_desc = (b["abstract"] or summary or display)[:280]
+
     return text, link, embed_title, embed_desc
 
 
@@ -494,7 +538,6 @@ def main() -> int:
     state = load_state()
     seen = set(state.get("posted", []))
 
-    # Phase 1: extract + filter + dedupe-against-state
     candidates: list[dict] = []
     for r in records:
         b = extract_fields(r)
@@ -506,7 +549,6 @@ def main() -> int:
             continue
         candidates.append(b)
 
-    # Phase 2: dedupe within this batch (collapse identical dedup_keys to one)
     unique_by_key: dict[str, dict] = {}
     for b in candidates:
         unique_by_key.setdefault(b["dedup_key"], b)
@@ -533,6 +575,8 @@ def main() -> int:
         text, link, ec_title, ec_desc = compose_post(b, summary)
         print(f"\n--- {b['state'] or '?'} {b['identifier']} ({b['action_date']}) ---")
         print(text)
+        print(f"[card title: {ec_title!r}]")
+        print(f"[card desc:  {ec_desc[:80]!r}…]")
         print("---")
 
         if client:
