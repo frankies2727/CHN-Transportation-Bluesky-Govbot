@@ -245,15 +245,16 @@ def _smart_case(s: str) -> str:
 
 
 def format_action_line(action_desc: str, date_yyyy_mm_dd: str) -> str:
+    """
+    Build 'Nov. 4, 2025: Placed on third reading.' — needs BOTH a date and
+    a description. If either is missing, we skip the line entirely. (A
+    floating date with no context is more confusing than helpful.)
+    """
     desc = _smart_case(action_desc)
     nice_date = _format_date(date_yyyy_mm_dd)
     if desc and nice_date:
         desc_with_period = desc if desc.endswith((".", "!", "?")) else desc + "."
         return f"{nice_date}: {desc_with_period}"
-    if nice_date:
-        return f"Latest action: {nice_date}"
-    if desc:
-        return desc
     return ""
 
 
@@ -323,7 +324,7 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
             # Allow the case where it's a www subdomain difference, e.g.
             # page = ilga.gov, image = www.ilga.gov
             if img_host.lstrip("www.") != page_host.lstrip("www."):
-                print(f"  - og:image is off-site ({img_host}), skipping", file=sys.stderr)
+                print(f"  IMG: ✗ og:image is off-site ({img_host}), skipping")
                 return None
 
         # Step 3: download the image (cap size)
@@ -334,7 +335,7 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
         for chunk in ir.iter_content(chunk_size=16384):
             img_bytes += chunk
             if len(img_bytes) > IMG_MAX_DOWNLOAD:
-                print(f"  - og:image too large (>{IMG_MAX_DOWNLOAD//1024} KB), skipping", file=sys.stderr)
+                print(f"  IMG: ✗ og:image too large (>{IMG_MAX_DOWNLOAD//1024} KB), skipping")
                 return None
 
         mime = ir.headers.get("content-type", "").split(";")[0].strip().lower() or "image/jpeg"
@@ -346,7 +347,7 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
 
         return (img_bytes, mime)
     except Exception as e:
-        print(f"  - og:image fetch failed: {e}", file=sys.stderr)
+        print(f"  IMG: ✗ fetch failed: {e}")
         return None
 
 
@@ -365,7 +366,7 @@ def prepare_image_for_bluesky(img_bytes: bytes, mime: str) -> tuple[bytes, str] 
     try:
         im = Image.open(io.BytesIO(img_bytes))
     except Exception as e:
-        print(f"  - Pillow couldn't open the image: {e}", file=sys.stderr)
+        print(f"  IMG: ✗ Pillow could not open the image: {e}")
         return None
 
     # If already small enough and a normal format, just return as-is.
@@ -560,11 +561,20 @@ def link_wi(ident, session):
     return f"https://docs.legis.wisconsin.gov/{year}/proposals/{p.lower()}{n}"
 
 def link_mn(ident, session):
+    """
+    Minnesota's URL needs four params: b (chamber), f (file), ssn (session
+    number; 0 = regular, 1+ = special), y (year). Govbot's session strings
+    look like '2025' (regular) or '2025s1' (1st special session).
+    """
     p, n = _split_identifier(ident)
-    if not (p and n): return ""
+    if not (p and n):
+        return ""
     year = _year_from_session(session, "2025")
+    # Parse special-session indicator: '2025s1' -> ssn=1, '2025' -> ssn=0
+    m = re.search(r"s(\d+)", (session or "").lower())
+    ssn = m.group(1) if m else "0"
     chamber = "House" if p.startswith("H") else "Senate"
-    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={p}{n}&y={year}"
+    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={p}{n}&ssn={ssn}&y={year}"
 
 def link_mo(ident, session):
     p, n = _split_identifier(ident)
@@ -732,20 +742,26 @@ def main() -> int:
         # Try to fetch and prepare an OG image for the link card.
         thumb_blob = None
         if link:
-            print(f"  fetching og:image for {link}", file=sys.stderr)
+            print(f"  IMG: fetching og:image for {link}")
             fetched = fetch_og_image(link)
             if fetched:
-                prepared = prepare_image_for_bluesky(*fetched)
+                img_bytes_raw, mime_raw = fetched
+                print(f"  IMG: downloaded {len(img_bytes_raw)//1024} KB ({mime_raw})")
+                prepared = prepare_image_for_bluesky(img_bytes_raw, mime_raw)
                 if prepared:
                     img_bytes, img_mime = prepared
                     if client:
                         thumb_blob = client.upload_blob(img_bytes, img_mime)
                         if thumb_blob:
-                            print(f"  ✓ og:image attached ({len(img_bytes)//1024} KB, {img_mime})", file=sys.stderr)
+                            print(f"  IMG: ✓ attached ({len(img_bytes)//1024} KB, {img_mime})")
+                        else:
+                            print(f"  IMG: ✗ blob upload failed")
                     else:
-                        print(f"  [dry-run] would attach image ({len(img_bytes)//1024} KB)", file=sys.stderr)
+                        print(f"  IMG: [dry-run] would attach ({len(img_bytes)//1024} KB)")
                 else:
-                    print(f"  - couldn't fit image under size cap", file=sys.stderr)
+                    print(f"  IMG: ✗ couldn't fit under size cap")
+            else:
+                print(f"  IMG: ✗ no usable og:image found")
 
         print(f"\n--- {b['state'] or '?'} {b['identifier']} ({b['action_date']}) ---")
         print(text)
