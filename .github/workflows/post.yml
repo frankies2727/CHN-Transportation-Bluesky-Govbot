@@ -19,7 +19,7 @@ defaults:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,34 +35,33 @@ jobs:
 
       - name: Verify script exists
         run: |
-          echo "Listing scripts/ folder:"
           ls -la scripts/
-          test -f scripts/post_to_bluesky.py && echo "OK: scripts/post_to_bluesky.py exists" || (echo "MISSING: scripts/post_to_bluesky.py" && exit 1)
+          test -f scripts/post_to_bluesky.py && echo "OK" || (echo "MISSING" && exit 1)
 
-      - name: Install govbot, fetch Midwest data, dump JSONL
+      - name: Install govbot, fetch all 50 states + DC + PR, dump JSONL
+        # ~2-3 GB total. Govbot will skip any state code it doesn't have a
+        # scraper for, so this is safe to leave even if a state is missing.
+        # Edit the state list below to add/remove states.
         run: |
           curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
           export PATH="$HOME/.govbot/bin:$PATH"
           govbot --version || true
-          # Midwest + adjacent states. Add or remove codes here as you like.
-          govbot clone il in mi wi oh ia mn mo
+          govbot clone \
+            al ak az ar ca co ct de fl ga \
+            hi id il in ia ks ky la me md \
+            ma mi mn ms mo mt ne nv nh nj \
+            nm ny nc nd oh ok or pa ri sc \
+            sd tn tx ut vt va wa wv wi wy \
+            dc pr
           govbot logs > bills.jsonl
           echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
-
-      - name: Debug — peek at bills.jsonl
-        run: |
-          echo "=== Total lines ==="
-          wc -l bills.jsonl
-          echo ""
-          echo "=== Lines mentioning common transportation terms ==="
-          grep -ciE 'transit|transport|highway|rail|bicycle|vehicle|traffic|infrastructure|bridge|truck|motor|toll|airport' bills.jsonl || echo "0 matches"
 
       - name: Filter, summarize, and post to Bluesky
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          POST_LIMIT: "2"
+          POST_LIMIT: "5"
         run: python scripts/post_to_bluesky.py
 
       - name: Commit state changes
