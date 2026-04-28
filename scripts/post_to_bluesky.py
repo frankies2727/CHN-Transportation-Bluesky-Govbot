@@ -189,7 +189,15 @@ def extract_fields(record: dict) -> dict | None:
     action_date_raw = action.get("date") or ""
     action_date = action_date_raw[:10] if action_date_raw else ""
 
+    # Long-term dedup key (saved to state/posted.json). Uses the truncated
+    # description so that genuinely different actions on the same day still
+    # get posted as separate updates.
     dedup_key = f"{state}|{identifier}|{action_date}|{action_desc[:40]}"
+
+    # Short-term dedup key for collapsing duplicates within a single batch.
+    # Ignores action description so 'Effective.' and 'Effective 9/30/25.' on
+    # the same bill on the same day count as one event.
+    same_day_key = f"{state}|{identifier}|{action_date}"
 
     return {
         "state": state,
@@ -201,6 +209,7 @@ def extract_fields(record: dict) -> dict | None:
         "action_desc": action_desc,
         "action_date": action_date,
         "dedup_key": dedup_key,
+        "same_day_key": same_day_key,
     }
 
 
@@ -284,6 +293,28 @@ def _extract_og_image_url(html: str, base_url: str) -> str:
     return ""
 
 
+def _requests_get_lenient(url, **kwargs):
+    """
+    Try a normal HTTPS GET first. If the cert fails to verify (some state
+    legislature sites have certificate issues), retry once with verification
+    disabled. We're only reading public HTML/images here — no credentials are
+    sent — so the security risk is minimal.
+    """
+    try:
+        return requests.get(url, **kwargs)
+    except requests.exceptions.SSLError:
+        print(f"  IMG: SSL verify failed, retrying without verification...")
+        kwargs2 = dict(kwargs)
+        kwargs2["verify"] = False
+        # Suppress urllib3's loud "InsecureRequestWarning" — we know.
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        except Exception:
+            pass
+        return requests.get(url, **kwargs2)
+
+
 def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
     """
     Fetch the OG image referenced from `page_url`.
@@ -298,7 +329,7 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
         headers = {"User-Agent": USER_AGENT}
 
         # Step 1: download the bill page HTML (cap size, short timeout)
-        r = requests.get(page_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
+        r = _requests_get_lenient(page_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
         r.raise_for_status()
         ctype = r.headers.get("content-type", "").lower()
         if "html" not in ctype:
@@ -321,14 +352,12 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
         # Step 2: only allow images from the same hostname (no off-site CDNs)
         img_host = urlparse(img_url).netloc.lower()
         if img_host and img_host != page_host:
-            # Allow the case where it's a www subdomain difference, e.g.
-            # page = ilga.gov, image = www.ilga.gov
             if img_host.lstrip("www.") != page_host.lstrip("www."):
                 print(f"  IMG: ✗ og:image is off-site ({img_host}), skipping")
                 return None
 
         # Step 3: download the image (cap size)
-        ir = requests.get(img_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
+        ir = _requests_get_lenient(img_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
         ir.raise_for_status()
 
         img_bytes = b""
@@ -714,10 +743,15 @@ def main() -> int:
             continue
         candidates.append(b)
 
-    unique_by_key: dict[str, dict] = {}
+    # In-batch dedup: same bill on same day = one post. If multiple log
+    # entries match (e.g. "Effective." + "Effective 9/30/25."), keep the one
+    # with the more substantive description.
+    unique_by_day: dict[str, dict] = {}
     for b in candidates:
-        unique_by_key.setdefault(b["dedup_key"], b)
-    candidates = list(unique_by_key.values())
+        existing = unique_by_day.get(b["same_day_key"])
+        if existing is None or len(b["action_desc"]) > len(existing["action_desc"]):
+            unique_by_day[b["same_day_key"]] = b
+    candidates = list(unique_by_day.values())
 
     print(f"Found {len(candidates)} new transportation-related bill update(s).")
     if not candidates:
