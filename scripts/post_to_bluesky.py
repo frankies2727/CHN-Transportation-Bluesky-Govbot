@@ -39,28 +39,38 @@ US_STATES = {
     "VA","WA","WV","WI","WY","DC","PR","GU","VI","AS","MP",
 }
 
+# Keywords have been tightened. Removed short agency abbreviations (cta, pace,
+# rta, idot, indot, modot, mdot, wsdot, cdl, dui, dwi) that cause false
+# positives. Kept long, specific terms that are unambiguous.
 TRANSPORTATION_KEYWORDS = [
-    "transportation", "transit", "rail", "railroad", "railway",
-    "subway", "streetcar", "light rail", "commuter rail", "ferry",
-    "amtrak", "metra", "cta", "pace", "rta", "idot", "indot", "modot", "wsdot", "mdot",
+    # Modes & systems — full words only
+    "transportation", "transit",
+    "rail", "railroad", "railway", "amtrak", "metra",
+    "subway", "streetcar", "light rail", "commuter rail",
+    "ferry",
     "bicycle", "bicyclist", "bike lane", "cyclist",
     "pedestrian", "sidewalk", "crosswalk", "walkability",
     "airport", "aviation", "airline", "aircraft",
-    "freight", "trucking", "commercial vehicle", "cdl",
-    "rideshare", "ride-share", "ride share", "taxicab",
+    "freight", "trucking", "commercial vehicle",
+    "rideshare", "ride-share", "ride share",
     "ev charging", "electric vehicle", "autonomous vehicle",
     "scooter", "e-bike",
+    "school bus", "bus driver", "bus drivers",
+
+    # Roads & infrastructure
     "highway", "tollway", "roadway", "expressway", "interstate",
     "tollbooth", "toll road", "toll bridge",
     "traffic signal", "traffic safety", "road construction",
     "complete streets", "vision zero", "pedestrian safety",
-    "infrastructure", "transportation infrastructure",
+    "transportation infrastructure",
+
+    # Vehicles & licensing
     "motor vehicle", "motor fuel tax", "gas tax",
     "vehicle registration", "license plate", "driver's license",
-    "speed limit", "dui", "dwi", "seatbelt", "helmet law",
-    "auto insurance",
-    "traffic", "parking", "congestion", "mobility",
-    "school bus", "bus driver", "bus drivers",
+    "speed limit", "seatbelt", "helmet law",
+
+    # Generic but useful
+    "parking", "congestion", "traffic",
 ]
 
 _KEYWORD_PATTERN = re.compile(
@@ -127,14 +137,10 @@ def detect_state(record: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def _looks_like_code_title(title: str) -> bool:
-    """
-    Heuristic: returns True if the title is short/ALL-CAPS and probably a
-    legislative shorthand rather than a real description (e.g. 'CIVIL LAW-TECH').
-    """
+    """ALL-CAPS shorthand titles like 'CIVIL LAW-TECH'."""
     t = title.strip()
     if not t:
         return True
-    # Mostly uppercase letters and short
     letters = [c for c in t if c.isalpha()]
     if not letters:
         return False
@@ -154,30 +160,19 @@ def extract_fields(record: dict) -> dict | None:
     state = detect_state(record)
     session = bill.get("legislative_session") or ""
 
-    # Abstract: take the first non-empty one
     abstract = ""
     for a in (bill.get("abstracts") or []):
-        if isinstance(a, dict):
-            text = a.get("abstract", "")
-        elif isinstance(a, str):
-            text = a
-        else:
-            text = ""
+        text = a.get("abstract", "") if isinstance(a, dict) else (a if isinstance(a, str) else "")
         if text:
             abstract = text
             break
 
-    # Subjects (a list of tags, e.g. ["school buses", "driver's licenses"])
     subjects = bill.get("subject") or []
     subjects_text = " ".join(str(s) for s in subjects) if isinstance(subjects, list) else str(subjects or "")
 
-    # log.action may be missing entirely (e.g. for vote_event log entries)
     action = log.get("action") or {}
     action_desc = action.get("description") or ""
     action_date_raw = action.get("date") or ""
-
-    # Some dates are full ISO timestamps ("2025-09-09T05:00:00+00:00"); others
-    # are bare ("2025-03-20"). Normalize to YYYY-MM-DD for dedup and sorting.
     action_date = action_date_raw[:10] if action_date_raw else ""
 
     dedup_key = f"{state}|{identifier}|{action_date}|{action_desc[:40]}"
@@ -196,17 +191,18 @@ def extract_fields(record: dict) -> dict | None:
 
 
 def is_transportation(b: dict) -> bool:
-    """Search title, abstract, action description, and subject tags."""
-    haystack = " ".join([b["title"], b["abstract"], b["action_desc"], b["subjects"]]).lower()
+    """
+    Search ONLY the bill's substantive content (title, abstract, subject tags).
+    We deliberately exclude action_desc because committee names like 'referred
+    to Transportation Committee' would falsely match non-transportation bills
+    that just happen to be procedurally routed through such committees.
+    """
+    haystack = " ".join([b["title"], b["abstract"], b["subjects"]]).lower()
     return bool(_KEYWORD_PATTERN.search(haystack))
 
 
 def best_display_text(b: dict) -> str:
-    """
-    Return the best human-readable description of the bill.
-    For 'CIVIL LAW-TECH'-style cryptic titles, prefer the abstract.
-    Otherwise prefer the title.
-    """
+    """Prefer abstract over title for cryptic ALL-CAPS shorthand titles."""
     if _looks_like_code_title(b["title"]) and b["abstract"]:
         return b["abstract"]
     return b["title"]
@@ -219,9 +215,7 @@ def best_display_text(b: dict) -> str:
 def summarize(b: dict) -> str:
     abstract = (b["abstract"] or "").strip()
     title = b["title"].strip()
-    display = best_display_text(b).strip()
 
-    # Build a fallback: prefer abstract if it adds info beyond the title.
     if abstract and abstract.lower() != title.lower():
         fallback = abstract[:180]
     else:
@@ -230,7 +224,7 @@ def summarize(b: dict) -> str:
     if not ANTHROPIC_KEY:
         return fallback
 
-    body_for_prompt = abstract if (abstract and abstract.lower() != title.lower()) else display
+    body_for_prompt = abstract if (abstract and abstract.lower() != title.lower()) else title
 
     prompt = (
         "You are summarizing a US legislative bill for a civic-engagement Bluesky bot "
@@ -250,11 +244,8 @@ def summarize(b: dict) -> str:
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
-            json={
-                "model": ANTHROPIC_MODEL,
-                "max_tokens": 200,
-                "messages": [{"role": "user", "content": prompt}],
-            },
+            json={"model": ANTHROPIC_MODEL, "max_tokens": 200,
+                  "messages": [{"role": "user", "content": prompt}]},
             timeout=30,
         )
         if not r.ok:
@@ -294,11 +285,7 @@ class BlueskyClient:
         if link_url:
             record["embed"] = {
                 "$type": "app.bsky.embed.external",
-                "external": {
-                    "uri": link_url,
-                    "title": embed_title[:300],
-                    "description": embed_desc[:1000],
-                },
+                "external": {"uri": link_url, "title": embed_title[:300], "description": embed_desc[:1000]},
             }
             if link_url in text:
                 tb = text.encode("utf-8")
@@ -309,7 +296,6 @@ class BlueskyClient:
                         "index": {"byteStart": start, "byteEnd": start + len(ub)},
                         "features": [{"$type": "app.bsky.richtext.facet#link", "uri": link_url}],
                     }]
-
         r = self.session.post(
             f"{BLUESKY_API}/com.atproto.repo.createRecord",
             json={"repo": self.did, "collection": "app.bsky.feed.post", "record": record},
@@ -320,11 +306,10 @@ class BlueskyClient:
 
 
 # ---------------------------------------------------------------------------
-# Per-state link builders (now session-aware)
+# Per-state link builders
 # ---------------------------------------------------------------------------
 
 def _split_identifier(ident: str) -> tuple[str, str]:
-    """Split 'HB 4119', 'HB4119', or 'SB 0174' into ('HB','4119') etc."""
     m = re.match(r"^\s*([A-Za-z]+)\s*0*(\d+)\s*$", ident or "")
     if not m:
         return "", ""
@@ -332,13 +317,11 @@ def _split_identifier(ident: str) -> tuple[str, str]:
 
 
 def _ga_from_session(session: str) -> str:
-    """Pull the General Assembly number out of a session string like '104th'."""
     m = re.match(r"^\s*(\d+)", session or "")
     return m.group(1) if m else ""
 
 
 def _year_from_session(session: str, default: str = "2025") -> str:
-    """Pull a 4-digit year out of a session like '2025-2026' or '2025S2'."""
     m = re.search(r"(20\d{2})", session or "")
     return m.group(1) if m else default
 
@@ -371,7 +354,6 @@ def link_ia(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
-    # Iowa's GA: 91 = 2025-2026, 90 = 2023-2024, etc. Default to 91.
     return f"https://www.legis.iowa.gov/legislation/BillBook?ga=91&ba={prefix}{num}"
 
 
@@ -427,14 +409,14 @@ def link_for(b: dict) -> str:
 
 def emoji_for(b: dict) -> str:
     s = " ".join([b["title"], b["abstract"], b["subjects"]]).lower()
-    if any(w in s for w in ("transit", "cta", "metra", "pace", "school bus", "bus driver", "subway")): return "🚌"
-    if any(w in s for w in ("rail", "amtrak", "railroad", "railway")):           return "🚆"
-    if any(w in s for w in ("airport", "aviation", "aircraft")):                 return "✈️"
-    if any(w in s for w in ("bicycle", "bike lane", "cyclist")):                 return "🚲"
-    if any(w in s for w in ("pedestrian", "sidewalk", "crosswalk")):             return "🚶"
-    if any(w in s for w in ("electric vehicle", "ev charging")):                 return "🔌"
-    if any(w in s for w in ("highway", "tollway", "expressway", "interstate")):  return "🛣️"
-    if any(w in s for w in ("truck", "freight", "commercial vehicle")):          return "🚛"
+    if any(w in s for w in ("transit", "school bus", "bus driver", "subway")): return "🚌"
+    if any(w in s for w in ("rail", "amtrak", "railroad", "railway", "metra")): return "🚆"
+    if any(w in s for w in ("airport", "aviation", "aircraft")):                return "✈️"
+    if any(w in s for w in ("bicycle", "bike lane", "cyclist")):                return "🚲"
+    if any(w in s for w in ("pedestrian", "sidewalk", "crosswalk")):            return "🚶"
+    if any(w in s for w in ("electric vehicle", "ev charging")):                return "🔌"
+    if any(w in s for w in ("highway", "tollway", "expressway", "interstate")): return "🛣️"
+    if any(w in s for w in ("truck", "freight", "commercial vehicle")):         return "🚛"
     return "🚗"
 
 
@@ -444,12 +426,9 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
     link_block = f"\n\n{LINK_PREFIX}{link}" if link else ""
 
     state_label = b["state"] or "?"
-
-    # Use abstract as the headline for cryptic titles like "CIVIL LAW-TECH"
     display = best_display_text(b).strip()
     summary = (summary or "").strip()
 
-    # If the summary just repeats the headline, drop it.
     if not summary or summary.lower() == display.lower():
         body_extra = ""
     else:
@@ -458,9 +437,7 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
     head = f"{emoji} {state_label} {b['identifier']} — {display}"
     body = head + body_extra
 
-    # Trim to fit within MAX_POST including link.
     if len(body + link_block) > MAX_POST:
-        # Trim summary first.
         if body_extra:
             overflow = len(body + link_block) - MAX_POST
             new_len = max(0, len(summary) - overflow - 1)
@@ -471,7 +448,6 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
             else:
                 body_extra = ""
                 body = head
-        # If still too long, trim the headline.
         if len(body + link_block) > MAX_POST:
             avail = MAX_POST - len(link_block) - len(emoji) - len(f" {state_label} {b['identifier']} — ") - 1
             display = display[:max(0, avail)].rstrip() + "…"
@@ -518,6 +494,7 @@ def main() -> int:
     state = load_state()
     seen = set(state.get("posted", []))
 
+    # Phase 1: extract + filter + dedupe-against-state
     candidates: list[dict] = []
     for r in records:
         b = extract_fields(r)
@@ -528,6 +505,12 @@ def main() -> int:
         if b["dedup_key"] in seen:
             continue
         candidates.append(b)
+
+    # Phase 2: dedupe within this batch (collapse identical dedup_keys to one)
+    unique_by_key: dict[str, dict] = {}
+    for b in candidates:
+        unique_by_key.setdefault(b["dedup_key"], b)
+    candidates = list(unique_by_key.values())
 
     print(f"Found {len(candidates)} new transportation-related bill update(s).")
     if not candidates:
