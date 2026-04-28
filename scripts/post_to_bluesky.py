@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-Filter govbot's bills.jsonl for transportation-related bills across multiple
-states, dedupe against state/posted.json, summarize with Claude, and post to
-Bluesky with rich link-card embeds (including a fetched OG image where
-available).
+Filter govbot's bills.jsonl for transportation-related bills across all 50
+states + DC, dedupe against state/posted.json, summarize with Claude, and
+post to Bluesky with rich link-card embeds.
+
+Bill links go to openstates.org — a unified bill viewer maintained by the
+Open States project. Each bill page also links back to the state's official
+source. Far more reliable than hand-building 50 different state URL patterns.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 JSONL_PATH = ROOT / "bills.jsonl"
 STATE_FILE = ROOT / "state" / "posted.json"
 
-POST_LIMIT = int(os.environ.get("POST_LIMIT", "2"))
+POST_LIMIT = int(os.environ.get("POST_LIMIT", "3"))  # how many bluesky posts per run
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
 BSKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "")
@@ -35,14 +38,9 @@ BLUESKY_API = "https://bsky.social/xrpc"
 ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 
-# Image fetching limits — keep tight to avoid abuse and slow runs.
-IMG_MAX_DOWNLOAD = 5 * 1024 * 1024   # 5 MB cap on raw download
-IMG_TARGET_SIZE  = 900 * 1024        # ~900 KB target after resize (Bluesky caps at 976 KB)
-IMG_FETCH_TIMEOUT = 10               # seconds per request
-# Many state legislature sites aggressively block requests with non-browser
-# User-Agents (Ohio in particular returned 500 errors for our bot UA). We
-# only fetch public HTML/images and respect robots-style limits implicitly
-# via tight rate limits, so a real browser UA is appropriate here.
+IMG_MAX_DOWNLOAD = 5 * 1024 * 1024
+IMG_TARGET_SIZE  = 900 * 1024
+IMG_FETCH_TIMEOUT = 10
 USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
@@ -54,19 +52,17 @@ US_STATES = {
 }
 
 STATE_FULL_NAME = {
-    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "MI": "Michigan",
-    "MN": "Minnesota", "MO": "Missouri", "OH": "Ohio", "WI": "Wisconsin",
-    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
-    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
-    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
-    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine",
-    "MD": "Maryland", "MA": "Massachusetts", "MS": "Mississippi", "MT": "Montana",
-    "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
-    "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota",
-    "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island",
-    "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas",
-    "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
-    "WV": "West Virginia", "WY": "Wyoming", "DC": "Washington D.C.",
+    "AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California",
+    "CO":"Colorado","CT":"Connecticut","DE":"Delaware","FL":"Florida","GA":"Georgia",
+    "HI":"Hawaii","ID":"Idaho","IL":"Illinois","IN":"Indiana","IA":"Iowa",
+    "KS":"Kansas","KY":"Kentucky","LA":"Louisiana","ME":"Maine","MD":"Maryland",
+    "MA":"Massachusetts","MI":"Michigan","MN":"Minnesota","MS":"Mississippi","MO":"Missouri",
+    "MT":"Montana","NE":"Nebraska","NV":"Nevada","NH":"New Hampshire","NJ":"New Jersey",
+    "NM":"New Mexico","NY":"New York","NC":"North Carolina","ND":"North Dakota","OH":"Ohio",
+    "OK":"Oklahoma","OR":"Oregon","PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina",
+    "SD":"South Dakota","TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont",
+    "VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming",
+    "DC":"Washington D.C.","PR":"Puerto Rico",
 }
 
 TRANSPORTATION_KEYWORDS = [
@@ -194,14 +190,7 @@ def extract_fields(record: dict) -> dict | None:
     action_date_raw = action.get("date") or ""
     action_date = action_date_raw[:10] if action_date_raw else ""
 
-    # Long-term dedup key (saved to state/posted.json). Uses the truncated
-    # description so that genuinely different actions on the same day still
-    # get posted as separate updates.
     dedup_key = f"{state}|{identifier}|{action_date}|{action_desc[:40]}"
-
-    # Short-term dedup key for collapsing duplicates within a single batch.
-    # Ignores action description so 'Effective.' and 'Effective 9/30/25.' on
-    # the same bill on the same day count as one event.
     same_day_key = f"{state}|{identifier}|{action_date}"
 
     return {
@@ -259,11 +248,6 @@ def _smart_case(s: str) -> str:
 
 
 def format_action_line(action_desc: str, date_yyyy_mm_dd: str) -> str:
-    """
-    Build 'Nov. 4, 2025: Placed on third reading.' — needs BOTH a date and
-    a description. If either is missing, we skip the line entirely. (A
-    floating date with no context is more confusing than helpful.)
-    """
     desc = _smart_case(action_desc)
     nice_date = _format_date(date_yyyy_mm_dd)
     if desc and nice_date:
@@ -273,7 +257,7 @@ def format_action_line(action_desc: str, date_yyyy_mm_dd: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# OG image fetching (NEW)
+# OG image fetching
 # ---------------------------------------------------------------------------
 
 _OG_IMAGE_PATTERNS = [
@@ -285,33 +269,22 @@ _OG_IMAGE_PATTERNS = [
 
 
 def _extract_og_image_url(html: str, base_url: str) -> str:
-    """Pull an absolute OG image URL out of an HTML page, or '' if none found."""
-    # Limit how much HTML we scan — OG tags are always in <head>.
     head_only = html[:40000]
     for pat in _OG_IMAGE_PATTERNS:
         m = pat.search(head_only)
         if m:
-            url = m.group(1).strip()
-            # Decode common HTML entities in the URL itself.
-            url = url.replace("&amp;", "&")
+            url = m.group(1).strip().replace("&amp;", "&")
             return urljoin(base_url, url)
     return ""
 
 
 def _requests_get_lenient(url, **kwargs):
-    """
-    Try a normal HTTPS GET first. If the cert fails to verify (some state
-    legislature sites have certificate issues), retry once with verification
-    disabled. We're only reading public HTML/images here — no credentials are
-    sent — so the security risk is minimal.
-    """
     try:
         return requests.get(url, **kwargs)
     except requests.exceptions.SSLError:
         print(f"  IMG: SSL verify failed, retrying without verification...")
         kwargs2 = dict(kwargs)
         kwargs2["verify"] = False
-        # Suppress urllib3's loud "InsecureRequestWarning" — we know.
         try:
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -321,11 +294,6 @@ def _requests_get_lenient(url, **kwargs):
 
 
 def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
-    """
-    Fetch the OG image referenced from `page_url`.
-    Returns (raw_bytes, mime_type) on success, or None on any failure.
-    Only fetches images from the SAME hostname as the page (security).
-    """
     try:
         page_host = urlparse(page_url).netloc.lower()
         if not page_host:
@@ -338,7 +306,6 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
             "Accept-Encoding": "gzip, deflate, br",
         }
 
-        # Step 1: download the bill page HTML (cap size, short timeout)
         r = _requests_get_lenient(page_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
         r.raise_for_status()
         ctype = r.headers.get("content-type", "").lower()
@@ -348,7 +315,7 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
         html_bytes = b""
         for chunk in r.iter_content(chunk_size=8192):
             html_bytes += chunk
-            if len(html_bytes) > 500_000:  # 500 KB of HTML is plenty for og tags
+            if len(html_bytes) > 500_000:
                 break
         try:
             html = html_bytes.decode("utf-8", errors="replace")
@@ -359,14 +326,12 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
         if not img_url:
             return None
 
-        # Step 2: only allow images from the same hostname (no off-site CDNs)
         img_host = urlparse(img_url).netloc.lower()
         if img_host and img_host != page_host:
             if img_host.lstrip("www.") != page_host.lstrip("www."):
                 print(f"  IMG: ✗ og:image is off-site ({img_host}), skipping")
                 return None
 
-        # Step 3: download the image (cap size)
         ir = _requests_get_lenient(img_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
         ir.raise_for_status()
 
@@ -378,10 +343,7 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
                 return None
 
         mime = ir.headers.get("content-type", "").split(";")[0].strip().lower() or "image/jpeg"
-        if not mime.startswith("image/"):
-            return None
-        # Bluesky doesn't accept SVG.
-        if "svg" in mime:
+        if not mime.startswith("image/") or "svg" in mime:
             return None
 
         return (img_bytes, mime)
@@ -391,15 +353,9 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
 
 
 def prepare_image_for_bluesky(img_bytes: bytes, mime: str) -> tuple[bytes, str] | None:
-    """
-    Resize/recompress so the image fits under Bluesky's blob limit (~976 KB).
-    Returns (new_bytes, new_mime) or None if Pillow can't open it.
-    """
     try:
         from PIL import Image
     except ImportError:
-        # If Pillow isn't installed, fall back to using the original bytes
-        # only if they're already small enough.
         return (img_bytes, mime) if len(img_bytes) <= IMG_TARGET_SIZE else None
 
     try:
@@ -408,15 +364,12 @@ def prepare_image_for_bluesky(img_bytes: bytes, mime: str) -> tuple[bytes, str] 
         print(f"  IMG: ✗ Pillow could not open the image: {e}")
         return None
 
-    # If already small enough and a normal format, just return as-is.
     if len(img_bytes) <= IMG_TARGET_SIZE and mime in ("image/jpeg", "image/png", "image/webp"):
         return (img_bytes, mime)
 
-    # Otherwise, recompress as JPEG with progressive quality reduction.
     if im.mode in ("RGBA", "LA", "P"):
-        im = im.convert("RGB")  # JPEG can't do alpha
+        im = im.convert("RGB")
 
-    # Cap dimensions — most OG images don't need to be huge.
     max_side = 1600
     if max(im.size) > max_side:
         ratio = max_side / max(im.size)
@@ -430,7 +383,7 @@ def prepare_image_for_bluesky(img_bytes: bytes, mime: str) -> tuple[bytes, str] 
         if len(data) <= IMG_TARGET_SIZE:
             return (data, "image/jpeg")
 
-    return None  # couldn't get it small enough
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -493,7 +446,6 @@ class BlueskyClient:
         self.session.headers["Authorization"] = f"Bearer {d['accessJwt']}"
 
     def upload_blob(self, data: bytes, mime: str) -> dict | None:
-        """Upload binary data to Bluesky's blob storage. Returns the blob ref dict."""
         try:
             r = self.session.post(
                 f"{BLUESKY_API}/com.atproto.repo.uploadBlob",
@@ -515,15 +467,10 @@ class BlueskyClient:
             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         if link_url:
-            external = {
-                "uri": link_url,
-                "title": embed_title[:300],
-                "description": embed_desc[:1000],
-            }
+            external = {"uri": link_url, "title": embed_title[:300], "description": embed_desc[:1000]}
             if thumb_blob:
                 external["thumb"] = thumb_blob
             record["embed"] = {"$type": "app.bsky.embed.external", "external": external}
-
             if link_url in text:
                 tb = text.encode("utf-8")
                 ub = link_url.encode("utf-8")
@@ -533,7 +480,6 @@ class BlueskyClient:
                         "index": {"byteStart": start, "byteEnd": start + len(ub)},
                         "features": [{"$type": "app.bsky.richtext.facet#link", "uri": link_url}],
                     }]
-
         r = self.session.post(
             f"{BLUESKY_API}/com.atproto.repo.createRecord",
             json={"repo": self.did, "collection": "app.bsky.feed.post", "record": record},
@@ -544,93 +490,45 @@ class BlueskyClient:
 
 
 # ---------------------------------------------------------------------------
-# Per-state link builders
+# Universal Open States link builder (replaces 8 per-state builders)
 # ---------------------------------------------------------------------------
 
-def _split_identifier(ident: str) -> tuple[str, str]:
-    m = re.match(r"^\s*([A-Za-z]+)\s*0*(\d+)\s*$", ident or "")
-    if not m:
-        return "", ""
-    return m.group(1).upper(), m.group(2)
-
-
-def _ga_from_session(session: str) -> str:
-    m = re.match(r"^\s*(\d+)", session or "")
-    return m.group(1) if m else ""
-
-
-def _year_from_session(session: str, default: str = "2025") -> str:
-    m = re.search(r"(20\d{2})", session or "")
-    return m.group(1) if m else default
-
-
-def link_il(ident, session):
-    p, n = _split_identifier(ident)
-    if not (p and n): return ""
-    ga = _ga_from_session(session) or "104"
-    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={n}&GAID={ga}&GA={ga}&DocTypeID={p}"
-
-def link_mi(ident, session):
-    p, n = _split_identifier(ident)
-    if not (p and n): return ""
-    return f"https://www.legislature.mi.gov/Search/Bills?bills={p}-{n}"
-
-def link_in(ident, session):
-    p, n = _split_identifier(ident)
-    if not (p and n): return ""
-    year = _year_from_session(session, "2026")
-    chamber = "house" if p.startswith("H") else "senate"
-    return f"https://iga.in.gov/legislative/{year}/bills/{chamber}/{n}"
-
-def link_ia(ident, session):
-    p, n = _split_identifier(ident)
-    if not (p and n): return ""
-    return f"https://www.legis.iowa.gov/legislation/BillBook?ga=91&ba={p}{n}"
-
-def link_oh(ident, session):
-    p, n = _split_identifier(ident)
-    if not (p and n): return ""
-    chamber = "house" if p.startswith("H") else "senate"
-    return f"https://www.legislature.ohio.gov/legislation/{chamber}-bill/{n}"
-
-def link_wi(ident, session):
-    p, n = _split_identifier(ident)
-    if not (p and n): return ""
-    year = _year_from_session(session, "2025")
-    return f"https://docs.legis.wisconsin.gov/{year}/proposals/{p.lower()}{n}"
-
-def link_mn(ident, session):
+def _normalize_session_for_openstates(session: str) -> str:
     """
-    Minnesota's URL needs four params: b (chamber), f (file), ssn (session
-    number; 0 = regular, 1+ = special), y (year). Govbot's session strings
-    look like '2025' (regular) or '2025s1' (1st special session).
+    Open States' URL slugs match what govbot's `legislative_session` field
+    contains. Empirically:
+      - IL '104th'      -> '104th'
+      - IN '2026'       -> '2026'
+      - IA '2025-2026'  -> '2025-2026'
+      - MI '2025-2026'  -> '2025-2026'
+      - MN '2025s1'     -> '2025s1'
+      - MO '2025S2'     -> '2025S2'
+      - GA  -> '2025_26' (Georgia uses underscores)
+      - CT  -> '2025'
+    Govbot tends to mirror Open States' session identifiers, so we pass
+    through as-is. Govbot might canonicalize differently for some states,
+    but as long as the same slug is consistent across both, this works.
     """
-    p, n = _split_identifier(ident)
-    if not (p and n):
+    return (session or "").strip()
+
+
+def _normalize_identifier_for_openstates(ident: str) -> str:
+    """Open States URLs use the identifier with no internal spaces: 'HB 1032' -> 'HB1032'."""
+    return re.sub(r"\s+", "", ident or "")
+
+
+def link_for(b: dict) -> str:
+    """
+    Build an Open States bill URL.
+    Pattern: https://openstates.org/{state}/bills/{session}/{identifier}/
+    Works for all 50 states + DC + PR (all jurisdictions Open States supports).
+    """
+    state = (b.get("state") or "").lower()
+    session = _normalize_session_for_openstates(b.get("session", ""))
+    identifier = _normalize_identifier_for_openstates(b.get("identifier", ""))
+    if not (state and session and identifier):
         return ""
-    year = _year_from_session(session, "2025")
-    # Parse special-session indicator: '2025s1' -> ssn=1, '2025' -> ssn=0
-    m = re.search(r"s(\d+)", (session or "").lower())
-    ssn = m.group(1) if m else "0"
-    chamber = "House" if p.startswith("H") else "Senate"
-    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={p}{n}&ssn={ssn}&y={year}"
-
-def link_mo(ident, session):
-    p, n = _split_identifier(ident)
-    if not (p and n): return ""
-    chamber = "house" if p.startswith("H") else "senate"
-    return f"https://www.{chamber}.mo.gov/Bill.aspx?bill={p}{n}"
-
-
-STATE_LINK_BUILDERS = {
-    "IL": link_il, "MI": link_mi, "IN": link_in, "IA": link_ia,
-    "OH": link_oh, "WI": link_wi, "MN": link_mn, "MO": link_mo,
-}
-
-
-def link_for(b):
-    builder = STATE_LINK_BUILDERS.get(b.get("state", ""))
-    return builder(b["identifier"], b.get("session", "")) if builder else ""
+    return f"https://openstates.org/{state}/bills/{session}/{identifier}/"
 
 
 # ---------------------------------------------------------------------------
@@ -753,9 +651,7 @@ def main() -> int:
             continue
         candidates.append(b)
 
-    # In-batch dedup: same bill on same day = one post. If multiple log
-    # entries match (e.g. "Effective." + "Effective 9/30/25."), keep the one
-    # with the more substantive description.
+    # Same-day dedup (collapse multiple log entries for same bill on same day).
     unique_by_day: dict[str, dict] = {}
     for b in candidates:
         existing = unique_by_day.get(b["same_day_key"])
@@ -766,6 +662,12 @@ def main() -> int:
     print(f"Found {len(candidates)} new transportation-related bill update(s).")
     if not candidates:
         return 0
+
+    # Print a state-distribution summary so we can see coverage.
+    from collections import Counter
+    state_counts = Counter(b["state"] or "?" for b in candidates)
+    top = state_counts.most_common(15)
+    print(f"  by state: {', '.join(f'{s}={n}' for s,n in top)}")
 
     def sort_key(b: dict):
         try:
@@ -783,7 +685,6 @@ def main() -> int:
         summary = summarize(b)
         text, link, ec_title, ec_desc = compose_post(b, summary)
 
-        # Try to fetch and prepare an OG image for the link card.
         thumb_blob = None
         if link:
             print(f"  IMG: fetching og:image for {link}")
