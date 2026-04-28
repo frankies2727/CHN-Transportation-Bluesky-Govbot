@@ -78,7 +78,7 @@ jobs:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          POST_LIMIT: "5"
+          POST_LIMIT: "3"
         run: python scripts/post_to_bluesky.py
 
       - name: Commit state changes
