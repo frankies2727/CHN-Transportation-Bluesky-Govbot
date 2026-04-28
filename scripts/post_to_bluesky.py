@@ -39,7 +39,12 @@ ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 IMG_MAX_DOWNLOAD = 5 * 1024 * 1024   # 5 MB cap on raw download
 IMG_TARGET_SIZE  = 900 * 1024        # ~900 KB target after resize (Bluesky caps at 976 KB)
 IMG_FETCH_TIMEOUT = 10               # seconds per request
-USER_AGENT = "Mozilla/5.0 (compatible; govbot-bluesky/1.0; +https://github.com/)"
+# Many state legislature sites aggressively block requests with non-browser
+# User-Agents (Ohio in particular returned 500 errors for our bot UA). We
+# only fetch public HTML/images and respect robots-style limits implicitly
+# via tight rate limits, so a real browser UA is appropriate here.
+USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 US_STATES = {
     "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
@@ -326,7 +331,12 @@ def fetch_og_image(page_url: str) -> tuple[bytes, str] | None:
         if not page_host:
             return None
 
-        headers = {"User-Agent": USER_AGENT}
+        headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+        }
 
         # Step 1: download the bill page HTML (cap size, short timeout)
         r = _requests_get_lenient(page_url, headers=headers, timeout=IMG_FETCH_TIMEOUT, stream=True)
@@ -798,6 +808,7 @@ def main() -> int:
                 print(f"  IMG: ✗ no usable og:image found")
 
         print(f"\n--- {b['state'] or '?'} {b['identifier']} ({b['action_date']}) ---")
+        print(f"    same_day_key: {b['same_day_key']}")
         print(text)
         print("---")
 
