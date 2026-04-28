@@ -45,7 +45,7 @@ TRANSPORTATION_KEYWORDS = [
     "amtrak", "metra", "cta", "pace", "rta", "idot", "indot", "modot", "wsdot", "mdot",
     "bicycle", "bicyclist", "bike lane", "cyclist",
     "pedestrian", "sidewalk", "crosswalk", "walkability",
-    "airport", "aviation", "airline",
+    "airport", "aviation", "airline", "aircraft",
     "freight", "trucking", "commercial vehicle", "cdl",
     "rideshare", "ride-share", "ride share", "taxicab",
     "ev charging", "electric vehicle", "autonomous vehicle",
@@ -71,6 +71,7 @@ _KEYWORD_PATTERN = re.compile(
 MAX_POST = 290
 LINK_PREFIX = "🔗 "
 
+
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
@@ -94,26 +95,13 @@ def load_bills(path: Path) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# State detection — govbot encodes state in source paths like 'state:ia'
+# State detection
 # ---------------------------------------------------------------------------
 
 _STATE_TAG_PATTERN = re.compile(r"\bstate:([a-z]{2})\b", re.IGNORECASE)
 
 
-def _state_from_text(text: str) -> str:
-    """Extract a state code from any string. Most govbot strings have 'state:xx'."""
-    if not isinstance(text, str):
-        return ""
-    m = _STATE_TAG_PATTERN.search(text)
-    if m:
-        code = m.group(1).upper()
-        if code in US_STATES:
-            return code
-    return ""
-
-
 def _walk_strings(obj):
-    """Yield every string anywhere in a nested dict/list structure."""
     if isinstance(obj, str):
         yield obj
     elif isinstance(obj, dict):
@@ -125,21 +113,34 @@ def _walk_strings(obj):
 
 
 def detect_state(record: dict) -> str:
-    """
-    Find the state by scanning every string in the record for the 'state:xx'
-    pattern that govbot embeds in its source paths. This is the most reliable
-    method given the actual data shape we observed.
-    """
     for s in _walk_strings(record):
-        code = _state_from_text(s)
-        if code:
-            return code
+        m = _STATE_TAG_PATTERN.search(s)
+        if m:
+            code = m.group(1).upper()
+            if code in US_STATES:
+                return code
     return ""
 
 
 # ---------------------------------------------------------------------------
 # Field extraction
 # ---------------------------------------------------------------------------
+
+def _looks_like_code_title(title: str) -> bool:
+    """
+    Heuristic: returns True if the title is short/ALL-CAPS and probably a
+    legislative shorthand rather than a real description (e.g. 'CIVIL LAW-TECH').
+    """
+    t = title.strip()
+    if not t:
+        return True
+    # Mostly uppercase letters and short
+    letters = [c for c in t if c.isalpha()]
+    if not letters:
+        return False
+    upper_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
+    return len(t) < 35 and upper_ratio > 0.7
+
 
 def extract_fields(record: dict) -> dict | None:
     bill = record.get("bill") or {}
@@ -151,45 +152,43 @@ def extract_fields(record: dict) -> dict | None:
         return None
 
     state = detect_state(record)
+    session = bill.get("legislative_session") or ""
 
-    abstracts = bill.get("abstracts") or []
+    # Abstract: take the first non-empty one
     abstract = ""
-    if abstracts and isinstance(abstracts, list):
-        first = abstracts[0]
-        if isinstance(first, dict):
-            abstract = first.get("abstract", "")
-        elif isinstance(first, str):
-            abstract = first
+    for a in (bill.get("abstracts") or []):
+        if isinstance(a, dict):
+            text = a.get("abstract", "")
+        elif isinstance(a, str):
+            text = a
+        else:
+            text = ""
+        if text:
+            abstract = text
+            break
 
-    # subject is sometimes a list of tags — useful as fallback search material
+    # Subjects (a list of tags, e.g. ["school buses", "driver's licenses"])
     subjects = bill.get("subject") or []
-    if isinstance(subjects, list):
-        subjects_text = " ".join(str(s) for s in subjects)
-    else:
-        subjects_text = str(subjects) if subjects else ""
+    subjects_text = " ".join(str(s) for s in subjects) if isinstance(subjects, list) else str(subjects or "")
 
-    sponsors_list = bill.get("sponsors") or log.get("sponsors") or []
-    sponsor = ""
-    if sponsors_list and isinstance(sponsors_list, list):
-        first_sp = sponsors_list[0]
-        if isinstance(first_sp, dict):
-            sponsor = first_sp.get("name", "")
-        elif isinstance(first_sp, str):
-            sponsor = first_sp
-
+    # log.action may be missing entirely (e.g. for vote_event log entries)
     action = log.get("action") or {}
     action_desc = action.get("description") or ""
-    action_date = action.get("date") or ""
+    action_date_raw = action.get("date") or ""
+
+    # Some dates are full ISO timestamps ("2025-09-09T05:00:00+00:00"); others
+    # are bare ("2025-03-20"). Normalize to YYYY-MM-DD for dedup and sorting.
+    action_date = action_date_raw[:10] if action_date_raw else ""
 
     dedup_key = f"{state}|{identifier}|{action_date}|{action_desc[:40]}"
 
     return {
         "state": state,
+        "session": session,
         "identifier": identifier,
         "title": title,
         "abstract": abstract,
         "subjects": subjects_text,
-        "sponsor": sponsor,
         "action_desc": action_desc,
         "action_date": action_date,
         "dedup_key": dedup_key,
@@ -197,9 +196,20 @@ def extract_fields(record: dict) -> dict | None:
 
 
 def is_transportation(b: dict) -> bool:
-    """Check title, abstract, action, and subject tags for transportation terms."""
+    """Search title, abstract, action description, and subject tags."""
     haystack = " ".join([b["title"], b["abstract"], b["action_desc"], b["subjects"]]).lower()
     return bool(_KEYWORD_PATTERN.search(haystack))
+
+
+def best_display_text(b: dict) -> str:
+    """
+    Return the best human-readable description of the bill.
+    For 'CIVIL LAW-TECH'-style cryptic titles, prefer the abstract.
+    Otherwise prefer the title.
+    """
+    if _looks_like_code_title(b["title"]) and b["abstract"]:
+        return b["abstract"]
+    return b["title"]
 
 
 # ---------------------------------------------------------------------------
@@ -209,16 +219,18 @@ def is_transportation(b: dict) -> bool:
 def summarize(b: dict) -> str:
     abstract = (b["abstract"] or "").strip()
     title = b["title"].strip()
+    display = best_display_text(b).strip()
 
-    if not abstract or abstract.lower() == title.lower():
-        fallback = ""
-    else:
+    # Build a fallback: prefer abstract if it adds info beyond the title.
+    if abstract and abstract.lower() != title.lower():
         fallback = abstract[:180]
+    else:
+        fallback = ""
 
     if not ANTHROPIC_KEY:
         return fallback
 
-    body_for_prompt = abstract if (abstract and abstract.lower() != title.lower()) else title
+    body_for_prompt = abstract if (abstract and abstract.lower() != title.lower()) else display
 
     prompt = (
         "You are summarizing a US legislative bill for a civic-engagement Bluesky bot "
@@ -279,7 +291,6 @@ class BlueskyClient:
             "text": text,
             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
-
         if link_url:
             record["embed"] = {
                 "$type": "app.bsky.embed.external",
@@ -301,11 +312,7 @@ class BlueskyClient:
 
         r = self.session.post(
             f"{BLUESKY_API}/com.atproto.repo.createRecord",
-            json={
-                "repo": self.did,
-                "collection": "app.bsky.feed.post",
-                "record": record,
-            },
+            json={"repo": self.did, "collection": "app.bsky.feed.post", "record": record},
             timeout=30,
         )
         r.raise_for_status()
@@ -313,52 +320,62 @@ class BlueskyClient:
 
 
 # ---------------------------------------------------------------------------
-# Per-state link builders
-# Each one takes a bill identifier (e.g. "HB 4119" or "SB857") and returns
-# either a search/listing URL or an empty string if it can't be built.
+# Per-state link builders (now session-aware)
 # ---------------------------------------------------------------------------
 
 def _split_identifier(ident: str) -> tuple[str, str]:
-    """Split 'HB 4119' or 'SB0857' into ('HB', '4119') / ('SB', '857')."""
+    """Split 'HB 4119', 'HB4119', or 'SB 0174' into ('HB','4119') etc."""
     m = re.match(r"^\s*([A-Za-z]+)\s*0*(\d+)\s*$", ident or "")
     if not m:
         return "", ""
     return m.group(1).upper(), m.group(2)
 
 
-def link_il(ident: str) -> str:
+def _ga_from_session(session: str) -> str:
+    """Pull the General Assembly number out of a session string like '104th'."""
+    m = re.match(r"^\s*(\d+)", session or "")
+    return m.group(1) if m else ""
+
+
+def _year_from_session(session: str, default: str = "2025") -> str:
+    """Pull a 4-digit year out of a session like '2025-2026' or '2025S2'."""
+    m = re.search(r"(20\d{2})", session or "")
+    return m.group(1) if m else default
+
+
+def link_il(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
-    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={num}&GAID=17&GA=104&DocTypeID={prefix}"
+    ga = _ga_from_session(session) or "104"
+    return f"https://www.ilga.gov/legislation/billstatus.asp?DocNum={num}&GAID={ga}&GA={ga}&DocTypeID={prefix}"
 
 
-def link_mi(ident: str) -> str:
-    # Michigan's bill search page works with a query string
+def link_mi(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
-    # Format like "2025-HB-4119"
     return f"https://www.legislature.mi.gov/Search/Bills?bills={prefix}-{num}"
 
 
-def link_in(ident: str) -> str:
+def link_in(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
-    # Indiana General Assembly bill page
-    return f"https://iga.in.gov/legislative/2025/bills/{('house' if prefix.startswith('H') else 'senate')}/{num}"
+    year = _year_from_session(session, "2026")
+    chamber = "house" if prefix.startswith("H") else "senate"
+    return f"https://iga.in.gov/legislative/{year}/bills/{chamber}/{num}"
 
 
-def link_ia(ident: str) -> str:
-    # Iowa Legislature's bill lookup
+def link_ia(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
+    # Iowa's GA: 91 = 2025-2026, 90 = 2023-2024, etc. Default to 91.
     return f"https://www.legis.iowa.gov/legislation/BillBook?ga=91&ba={prefix}{num}"
 
 
-def link_oh(ident: str) -> str:
+def link_oh(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
@@ -366,21 +383,24 @@ def link_oh(ident: str) -> str:
     return f"https://www.legislature.ohio.gov/legislation/{chamber}-bill/{num}"
 
 
-def link_wi(ident: str) -> str:
+def link_wi(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
-    return f"https://docs.legis.wisconsin.gov/2025/proposals/{prefix.lower()}{num}"
+    year = _year_from_session(session, "2025")
+    return f"https://docs.legis.wisconsin.gov/{year}/proposals/{prefix.lower()}{num}"
 
 
-def link_mn(ident: str) -> str:
+def link_mn(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
-    return f"https://www.revisor.mn.gov/bills/bill.php?b={('House' if prefix.startswith('H') else 'Senate')}&f={prefix}{num}&y=2025"
+    year = _year_from_session(session, "2025")
+    chamber = "House" if prefix.startswith("H") else "Senate"
+    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={prefix}{num}&y={year}"
 
 
-def link_mo(ident: str) -> str:
+def link_mo(ident: str, session: str) -> str:
     prefix, num = _split_identifier(ident)
     if not (prefix and num):
         return ""
@@ -389,22 +409,15 @@ def link_mo(ident: str) -> str:
 
 
 STATE_LINK_BUILDERS = {
-    "IL": link_il,
-    "MI": link_mi,
-    "IN": link_in,
-    "IA": link_ia,
-    "OH": link_oh,
-    "WI": link_wi,
-    "MN": link_mn,
-    "MO": link_mo,
+    "IL": link_il, "MI": link_mi, "IN": link_in, "IA": link_ia,
+    "OH": link_oh, "WI": link_wi, "MN": link_mn, "MO": link_mo,
 }
 
 
 def link_for(b: dict) -> str:
-    """Build a clickable URL for the bill, or '' if we don't have one for the state."""
     builder = STATE_LINK_BUILDERS.get(b.get("state", ""))
     if builder:
-        return builder(b["identifier"])
+        return builder(b["identifier"], b.get("session", ""))
     return ""
 
 
@@ -412,8 +425,8 @@ def link_for(b: dict) -> str:
 # Composition
 # ---------------------------------------------------------------------------
 
-def emoji_for(title: str, abstract: str) -> str:
-    s = (title + " " + abstract).lower()
+def emoji_for(b: dict) -> str:
+    s = " ".join([b["title"], b["abstract"], b["subjects"]]).lower()
     if any(w in s for w in ("transit", "cta", "metra", "pace", "school bus", "bus driver", "subway")): return "🚌"
     if any(w in s for w in ("rail", "amtrak", "railroad", "railway")):           return "🚆"
     if any(w in s for w in ("airport", "aviation", "aircraft")):                 return "✈️"
@@ -426,23 +439,28 @@ def emoji_for(title: str, abstract: str) -> str:
 
 
 def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
-    emoji = emoji_for(b["title"], b["abstract"])
+    emoji = emoji_for(b)
     link = link_for(b)
     link_block = f"\n\n{LINK_PREFIX}{link}" if link else ""
 
     state_label = b["state"] or "?"
-    title = b["title"].strip()
+
+    # Use abstract as the headline for cryptic titles like "CIVIL LAW-TECH"
+    display = best_display_text(b).strip()
     summary = (summary or "").strip()
 
-    if not summary or summary.lower() == title.lower():
+    # If the summary just repeats the headline, drop it.
+    if not summary or summary.lower() == display.lower():
         body_extra = ""
     else:
         body_extra = f"\n\n{summary}"
 
-    head = f"{emoji} {state_label} {b['identifier']} — {title}"
+    head = f"{emoji} {state_label} {b['identifier']} — {display}"
     body = head + body_extra
 
+    # Trim to fit within MAX_POST including link.
     if len(body + link_block) > MAX_POST:
+        # Trim summary first.
         if body_extra:
             overflow = len(body + link_block) - MAX_POST
             new_len = max(0, len(summary) - overflow - 1)
@@ -450,14 +468,18 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
                 summary = summary[:new_len].rstrip() + "…"
                 body_extra = f"\n\n{summary}"
                 body = head + body_extra
+            else:
+                body_extra = ""
+                body = head
+        # If still too long, trim the headline.
         if len(body + link_block) > MAX_POST:
             avail = MAX_POST - len(link_block) - len(emoji) - len(f" {state_label} {b['identifier']} — ") - 1
-            title = title[:max(0, avail)].rstrip() + "…"
-            head = f"{emoji} {state_label} {b['identifier']} — {title}"
+            display = display[:max(0, avail)].rstrip() + "…"
+            head = f"{emoji} {state_label} {b['identifier']} — {display}"
             body = head + body_extra
 
     text = body + link_block
-    embed_title = f"{state_label} {b['identifier']}: {b['title']}"[:300]
+    embed_title = f"{state_label} {b['identifier']}: {display}"[:300]
     embed_desc = b["abstract"][:280] if b["abstract"] else summary
     return text, link, embed_title, embed_desc
 
