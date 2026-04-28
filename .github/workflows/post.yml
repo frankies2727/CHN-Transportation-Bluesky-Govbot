@@ -38,21 +38,38 @@ jobs:
           ls -la scripts/
           test -f scripts/post_to_bluesky.py && echo "OK" || (echo "MISSING" && exit 1)
 
-      - name: Install govbot, fetch all 50 states + DC + PR, dump JSONL
-        # ~2-3 GB total. Govbot will skip any state code it doesn't have a
-        # scraper for, so this is safe to leave even if a state is missing.
-        # Edit the state list below to add/remove states.
+      - name: Install govbot, fetch all supported states, dump JSONL
+        # Clone each state one-at-a-time. Govbot panics on unsupported states,
+        # so we wrap each call in `|| echo "skipped"` to keep going. After the
+        # first successful run you'll see in the log which states are supported
+        # vs which ones were skipped.
         run: |
           curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
           export PATH="$HOME/.govbot/bin:$PATH"
           govbot --version || true
-          govbot clone \
-            al ak az ar ca co ct de fl ga \
-            hi id il in ia ks ky la me md \
-            ma mi mn ms mo mt ne nv nh nj \
-            nm ny nc nd oh ok or pa ri sc \
-            sd tn tx ut vt va wa wv wi wy \
-            dc pr
+
+          STATES="al ak az ar ca co ct de fl ga hi id il in ia ks ky la me md ma mi mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv wi wy dc pr"
+          SUCCESSFUL=""
+          SKIPPED=""
+          for state in $STATES; do
+            echo "--- Cloning $state ---"
+            if govbot clone "$state" 2>&1; then
+              SUCCESSFUL="$SUCCESSFUL $state"
+            else
+              echo "  SKIPPED $state (not supported by govbot)"
+              SKIPPED="$SKIPPED $state"
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "Supported states (cloned successfully):"
+          echo " $SUCCESSFUL"
+          echo ""
+          echo "Skipped states (not in govbot):"
+          echo " $SKIPPED"
+          echo "=========================================="
+
           govbot logs > bills.jsonl
           echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
 
