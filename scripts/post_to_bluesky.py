@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 JSONL_PATH = ROOT / "bills.jsonl"
 STATE_FILE = ROOT / "state" / "posted.json"
 
-POST_LIMIT = int(os.environ.get("POST_LIMIT", "3"))  # how many bluesky posts per run
+POST_LIMIT = int(os.environ.get("POST_LIMIT", "4"))  # how many bluesky posts per run
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
 BSKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "")
@@ -942,9 +942,29 @@ def main() -> int:
         except (ValueError, TypeError):
             return datetime.min
 
-    candidates.sort(key=sort_key, reverse=True)
-    to_post = candidates[:POST_LIMIT]
-    print(f"Will post up to {POST_LIMIT}: posting {len(to_post)}.")
+    # Round-robin pick across states so one state with a big batch of updates
+    # (e.g. all bills "withdrawn" on the same day a session ends) can't
+    # monopolize the run. Each pass picks at most one bill per state, ordered
+    # by which state has the freshest pending bill. If there aren't enough
+    # distinct states to fill POST_LIMIT, later passes pick a second per state.
+    by_state: dict[str, list[dict]] = {}
+    for b in candidates:
+        by_state.setdefault(b["state"] or "?", []).append(b)
+    for bills in by_state.values():
+        bills.sort(key=sort_key, reverse=True)
+    state_order = sorted(by_state.keys(), key=lambda s: sort_key(by_state[s][0]), reverse=True)
+
+    to_post: list[dict] = []
+    while len(to_post) < POST_LIMIT and any(by_state[s] for s in state_order):
+        for s in state_order:
+            if not by_state[s]:
+                continue
+            to_post.append(by_state[s].pop(0))
+            if len(to_post) >= POST_LIMIT:
+                break
+
+    distinct_states = len({b["state"] or "?" for b in to_post})
+    print(f"Will post up to {POST_LIMIT}: posting {len(to_post)} from {distinct_states} state(s).")
 
     client = None if DRY_RUN else BlueskyClient(BSKY_HANDLE, BSKY_PASSWORD)
 
