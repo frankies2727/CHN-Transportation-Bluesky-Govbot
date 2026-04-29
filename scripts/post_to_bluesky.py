@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Filter govbot's bills.jsonl for transportation-related bills across all 50
-states + DC, dedupe against state/posted.json, summarize with Claude, and
-post to Bluesky with rich link-card embeds.
+states + DC, dedupe against state/posted.json, summarize with a local Qwen
+model (served by Ollama), and post to Bluesky with rich link-card embeds.
 
 Bill links go to openstates.org — a unified bill viewer maintained by the
 Open States project. Each bill page also links back to the state's official
@@ -32,11 +32,15 @@ DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
 BSKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "")
 BSKY_PASSWORD = os.environ.get("BLUESKY_APP_PASSWORD", "")
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 BLUESKY_API = "https://bsky.social/xrpc"
-ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+
+# Local Qwen via Ollama. Defaults assume `ollama serve` is running on the
+# same host (e.g. installed in the GitHub Actions step before this script runs)
+# and the Qwen model has been pulled with `ollama pull <QWEN_MODEL>`.
+QWEN_API_URL = os.environ.get("QWEN_API_URL", "http://localhost:11434/api/chat")
+QWEN_MODEL = os.environ.get("QWEN_MODEL", "qwen2.5:1.5b")
+QWEN_TIMEOUT = int(os.environ.get("QWEN_TIMEOUT", "180"))
 
 IMG_MAX_DOWNLOAD = 5 * 1024 * 1024
 IMG_TARGET_SIZE  = 900 * 1024
@@ -390,39 +394,64 @@ def prepare_image_for_bluesky(img_bytes: bytes, mime: str) -> tuple[bytes, str] 
 # Summarization
 # ---------------------------------------------------------------------------
 
+_SUMMARY_SYSTEM_PROMPT = (
+    "You summarize US legislative bills for a civic-engagement Bluesky bot "
+    "focused on transportation. Output exactly ONE plain-text sentence under "
+    "180 characters describing what the bill does, neutrally. No emoji, no "
+    "hashtags, no editorializing, no surrounding quotes, no leading phrase "
+    "like 'This bill'. Just the substance. Do not include any preamble, "
+    "explanation, or trailing notes."
+)
+
+
+def _clean_summary(text: str) -> str:
+    text = (text or "").strip()
+    # Small models sometimes wrap output in quotes or markdown code fences.
+    if text.startswith("```"):
+        text = text.strip("`").strip()
+    text = text.strip().strip('"').strip("'").strip()
+    # Take only the first sentence/line if the model rambles.
+    for sep in ("\n\n", "\n"):
+        if sep in text:
+            text = text.split(sep, 1)[0].strip()
+    return text
+
+
 def summarize(b: dict) -> str:
     abstract = (b["abstract"] or "").strip()
     title = b["title"].strip()
     fallback = abstract[:180] if (abstract and abstract.lower() != title.lower()) else ""
 
-    if not ANTHROPIC_KEY:
-        return fallback
-
     body_for_prompt = abstract if (abstract and abstract.lower() != title.lower()) else title
 
-    prompt = (
-        "You are summarizing a US legislative bill for a civic-engagement Bluesky bot "
-        "that focuses on transportation. Write ONE plain-text sentence (under 180 "
-        "characters) describing what the bill does, neutrally. No emoji, no hashtags, "
-        "no editorializing, no quotes around the summary, no leading phrase like 'This "
-        "bill'. Just the substance.\n\n"
+    user_prompt = (
         f"Title: {title}\n"
-        f"Description: {body_for_prompt[:2000]}"
+        f"Description: {body_for_prompt[:2000]}\n\n"
+        "Write the one-sentence neutral summary now."
     )
 
     try:
         r = requests.post(
-            ANTHROPIC_API,
-            headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-            json={"model": ANTHROPIC_MODEL, "max_tokens": 200, "messages": [{"role": "user", "content": prompt}]},
-            timeout=30,
+            QWEN_API_URL,
+            json={
+                "model": QWEN_MODEL,
+                "messages": [
+                    {"role": "system", "content": _SUMMARY_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "stream": False,
+                "options": {"num_predict": 200, "temperature": 0.3},
+            },
+            timeout=QWEN_TIMEOUT,
         )
         if not r.ok:
-            print(f"  ! Anthropic {r.status_code}: {r.text[:300]}", file=sys.stderr)
+            print(f"  ! Qwen {r.status_code}: {r.text[:300]}", file=sys.stderr)
             r.raise_for_status()
         data = r.json()
-        text = "".join(blk.get("text", "") for blk in data.get("content", []) if blk.get("type") == "text")
-        return text.strip().strip('"').strip()
+        # Ollama /api/chat returns {"message": {"content": "..."}, ...}
+        # Ollama /api/generate returns {"response": "...", ...}
+        text = (data.get("message") or {}).get("content") or data.get("response") or ""
+        return _clean_summary(text)
     except Exception as e:
         print(f"  ! summarization failed, using fallback: {e}", file=sys.stderr)
         return fallback

@@ -7,8 +7,9 @@ A Bluesky bot that posts new tagged legislative bills with AI summaries, powered
 On a cron (every 6 hours by default):
 
 1. GitHub Actions installs and runs `govbot`, which clones state legislation repos, tags bills against your `govbot.yml`, and emits RSS feeds into `docs/`.
-2. `scripts/post_to_bluesky.py` walks `docs/` for new items (deduped by RSS `<guid>`), asks Claude for a one-sentence neutral summary, and posts to Bluesky with a clickable link.
-3. The workflow commits `state/posted.json` back to the repo so the next run knows what's already been posted.
+2. The workflow installs [Ollama](https://ollama.com/) on the runner and pulls a small **Qwen** model (`qwen2.5:1.5b`) — summarization runs entirely on the runner, no third-party API key required.
+3. `scripts/post_to_bluesky.py` walks `docs/` for new items (deduped by RSS `<guid>`), asks the local Qwen model for a one-sentence neutral summary, and posts to Bluesky with a clickable link.
+4. The workflow commits `state/posted.json` back to the repo so the next run knows what's already been posted.
 
 ## Setup
 
@@ -21,13 +22,14 @@ Run `govbot` locally once with no config — it launches a wizard that creates `
 If you'd rather skip the wizard, see the [govbot docs](https://chihacknight.github.io/govbot/).
 
 ### 3. Add repository secrets
-In **Settings → Secrets and variables → Actions**, add three secrets:
+In **Settings → Secrets and variables → Actions**, add two secrets:
 
 | Secret | Value |
 | --- | --- |
 | `BLUESKY_HANDLE` | Your bot's handle, e.g. `mybot.bsky.social` |
 | `BLUESKY_APP_PASSWORD` | An app password from Bluesky **Settings → App Passwords** (not your main password!) |
-| `ANTHROPIC_API_KEY` | API key from [console.anthropic.com](https://console.anthropic.com/) |
+
+Summarization uses a local Qwen model via Ollama on the GitHub Actions runner, so no third-party LLM API key is needed.
 
 ### 4. Enable Actions
 On the Actions tab, enable workflows. The first run can be triggered manually via **Run workflow** on `govbot-bluesky`.
@@ -39,19 +41,29 @@ Edit `.github/workflows/post.yml`:
 - `cron:` — change the schedule. `0 */6 * * *` is every 6 hours.
 - `POST_LIMIT` — max posts per run (default 5). Prevents flooding if many bills land at once.
 
-Edit `scripts/post_to_bluesky.py`:
+Edit `scripts/post_to_bluesky.py` (or override via env vars in the workflow):
 
-- `ANTHROPIC_MODEL` — default is `claude-haiku-4-5-20251001` (fast & cheap). Switch to a Sonnet or Opus model for richer summaries.
+- `QWEN_MODEL` — default is `qwen2.5:1.5b` (fast on a 2-core CI runner). Bump to `qwen2.5:3b` or `qwen2.5:7b` for richer summaries — pull time and per-summary latency will go up accordingly.
+- `QWEN_API_URL` — defaults to `http://localhost:11434/api/chat` (Ollama). Point at any Ollama-compatible endpoint to use a different host.
+- `QWEN_TIMEOUT` — per-request timeout in seconds (default 180).
 - `MAX_POST` — post length cap. Bluesky's actual limit is 300 graphemes; we keep some slack.
 
 ## Local testing
 
 ```bash
-pip install requests
+# 1. Install Ollama (https://ollama.com/) and pull the Qwen model
+ollama pull qwen2.5:1.5b
+# Make sure `ollama serve` is running (the desktop app starts it automatically;
+# on Linux the install script enables a systemd service).
+
+# 2. Run the script in dry-run mode
+pip install -r requirements.txt
 DRY_RUN=1 python scripts/post_to_bluesky.py
 ```
 
 Dry run prints composed posts without hitting Bluesky. State still updates so you can iterate without re-summarizing.
+
+If you don't have Ollama running locally, summaries fall back to a truncated abstract — the rest of the pipeline still works.
 
 ## Layout
 
