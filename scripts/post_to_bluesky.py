@@ -613,10 +613,22 @@ def _b_nc(session, ident):  # verified — ncleg.gov BillLookUp
     return f"https://www.ncleg.gov/BillLookUp/{year}/{typ}{num}" if (year and typ and num) else None
 
 
-def _b_nj(session, ident):  # best-effort — bill-search by biennium start year
-    year = _first_year(session)
+def _b_nj(session, ident):  # verified — bill-search needs biennium start year
+    # Govbot/OpenStates encode NJ's session as the legislature number
+    # (e.g. "221" = 221st legislature, 2024-2025) but njleg.state.nj.us
+    # URLs use the calendar start year of the biennium. NJ legislature N
+    # convenes in calendar year 1582 + 2*N (218th=2018, 221st=2024, 222nd=2026).
     typ, num = _split_ident(ident)
-    return f"https://www.njleg.state.nj.us/bill-search/{year}/{typ}{num}" if (year and typ and num) else None
+    if not (typ and num):
+        return None
+    year = _first_year(session)
+    if not year:
+        m = re.match(r"\s*(\d{3})\b", session or "")
+        if m:
+            year = str(1582 + 2 * int(m.group(1)))
+    if not year:
+        return None
+    return f"https://www.njleg.state.nj.us/bill-search/{year}/{typ}{num}"
 
 
 def _b_ct(session, ident):  # verified — search by year + bill number
