@@ -519,45 +519,253 @@ class BlueskyClient:
 
 
 # ---------------------------------------------------------------------------
-# Universal Open States link builder (replaces 8 per-state builders)
+# Per-state bill URL builders
+#
+# Each builder takes (session, identifier) -- e.g. ("2025-2026", "HB 4798") --
+# and returns a URL that links directly to the bill on the state's official
+# legislature website, or None if it can't construct a reliable URL for the
+# given inputs. When a builder returns None (or no builder is registered for
+# a state) link_for() falls back to STATE_LEGISLATURE_URLS, which lists the
+# best entry-point page for every state + DC + PR.
+#
+# Govbot's `legislative_session` field varies wildly by state. Some examples:
+#   IL '104th'       MA '194th'        OH '136'        IN '2026'
+#   FL '2026'        MI '2025-2026'    NY '2025'       WI '2025'
+#   MO '2025R'       MN '2025s1'       GA '2025_26'    CT '2025'
+# The helpers below extract the bits we need.
 # ---------------------------------------------------------------------------
 
-def _normalize_session_for_openstates(session: str) -> str:
-    """
-    Open States' URL slugs match what govbot's `legislative_session` field
-    contains. Empirically:
-      - IL '104th'      -> '104th'
-      - IN '2026'       -> '2026'
-      - IA '2025-2026'  -> '2025-2026'
-      - MI '2025-2026'  -> '2025-2026'
-      - MN '2025s1'     -> '2025s1'
-      - MO '2025S2'     -> '2025S2'
-      - GA  -> '2025_26' (Georgia uses underscores)
-      - CT  -> '2025'
-    Govbot tends to mirror Open States' session identifiers, so we pass
-    through as-is. Govbot might canonicalize differently for some states,
-    but as long as the same slug is consistent across both, this works.
-    """
-    return (session or "").strip()
+_YEAR_RE = re.compile(r"(20\d{2}|19\d{2})")
 
 
-def _normalize_identifier_for_openstates(ident: str) -> str:
-    """Open States URLs use the identifier with no internal spaces: 'HB 1032' -> 'HB1032'."""
-    return re.sub(r"\s+", "", ident or "")
+def _first_year(session: str) -> str:
+    """Extract the first 4-digit year from a session string (e.g. '2025-2026' -> '2025')."""
+    m = _YEAR_RE.search(session or "")
+    return m.group(1) if m else ""
+
+
+def _split_ident(ident: str) -> tuple[str, str]:
+    """'HB 1032' -> ('HB', '1032'); 'SCR 1' -> ('SCR', '1'); strips leading zeros from number."""
+    m = re.match(r"\s*([A-Za-z]+)\s*0*(\d+)", ident or "")
+    if not m:
+        return ("", "")
+    return (m.group(1).upper(), m.group(2))
+
+
+def _leading_int(s: str) -> str:
+    """'104th' -> '104'; '194' -> '194'; '' -> ''."""
+    m = re.match(r"(\d+)", s or "")
+    return m.group(1) if m else ""
+
+
+# ---------- per-state builders --------------------------------------------
+# Patterns marked "verified" follow the documented public URL format; patterns
+# marked "best-effort" are the most reasonable guess from the state's URL
+# scheme and may need adjustment if the state changes its site.
+
+def _b_fl(session, ident):  # verified — flsenate.gov serves both chambers
+    year = _first_year(session)
+    _, num = _split_ident(ident)
+    return f"https://flsenate.gov/Session/Bill/{year}/{num}" if (year and num) else None
+
+
+def _b_in(session, ident):  # verified — iga.in.gov clean URL
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    return f"https://iga.in.gov/{year}/bills/{typ.lower()}{num}" if (year and typ and num) else None
+
+
+def _b_mi(session, ident):  # verified — needs 4-digit zero-padded number
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if year and typ and num:
+        return f"https://www.legislature.mi.gov/Bills/Bill?ObjectName={year}-{typ}-{num.zfill(4)}"
+    return None
+
+
+def _b_ny(session, ident):  # verified — nysenate.gov shows both chambers
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    return f"https://www.nysenate.gov/legislation/bills/{year}/{typ}{num}" if (year and typ and num) else None
+
+
+def _b_ma(session, ident):  # verified — uses General Court number (194 = 2025-2026)
+    gc = _leading_int(session)
+    typ, num = _split_ident(ident)
+    return f"https://malegislature.gov/Bills/{gc}/{typ}{num}" if (gc and typ and num) else None
+
+
+def _b_oh(session, ident):  # verified — uses GA number, identifier lowercase
+    ga = _leading_int(session)
+    typ, num = _split_ident(ident)
+    return f"https://www.legislature.ohio.gov/legislation/{ga}/{typ.lower()}{num}" if (ga and typ and num) else None
+
+
+def _b_wi(session, ident):  # verified — docs.legis.wisconsin.gov
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    return f"https://docs.legis.wisconsin.gov/{year}/related/proposals/{typ.lower()}{num}" if (year and typ and num) else None
+
+
+def _b_nc(session, ident):  # verified — ncleg.gov BillLookUp
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    return f"https://www.ncleg.gov/BillLookUp/{year}/{typ}{num}" if (year and typ and num) else None
+
+
+def _b_nj(session, ident):  # best-effort — bill-search by biennium start year
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    return f"https://www.njleg.state.nj.us/bill-search/{year}/{typ}{num}" if (year and typ and num) else None
+
+
+def _b_ct(session, ident):  # verified — search by year + bill number
+    year = _first_year(session)
+    _, num = _split_ident(ident)
+    if year and num:
+        return ("https://www.cga.ct.gov/asp/cgabillstatus/cgabillstatus.asp"
+                f"?selBillType=Bill&which_year={year}&bill_num={num}")
+    return None
+
+
+def _b_mo(session, ident):  # best-effort — chamber-specific deep link by year+session-code
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    m = re.search(r"20\d{2}\s*([A-Za-z]\d*)", session or "")
+    code = (m.group(1) if m else "R").upper()
+    if typ.startswith("H"):
+        return f"https://house.mo.gov/Bill.aspx?bill={typ}{num}&year={year}&code={code}"
+    return f"https://www.senate.mo.gov/{year[-2:]}info/BTS_Web/Bill.aspx?SessionType={code}&BillID={typ}{num}"
+
+
+def _b_mn(session, ident):  # best-effort — revisor.mn.gov bills bill.php
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    chamber = "House" if typ.startswith("H") else "Senate"
+    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={typ}{num}&y={year}"
+
+
+def _b_nm(session, ident):  # best-effort — nmlegis.gov Legislation form
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    chamber = "H" if typ.startswith("H") else "S"
+    leg_type = "B"
+    if "JR" in typ: leg_type = "JR"
+    elif "JM" in typ: leg_type = "JM"
+    elif "M" in typ and not typ.startswith("M"): leg_type = "M"
+    return (f"https://www.nmlegis.gov/Legislation/Legislation"
+            f"?Chamber={chamber}&LegType={leg_type}&LegNo={num}&year={year[-2:]}")
+
+
+def _b_hi(session, ident):  # best-effort — capitol.hawaii.gov
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    return f"https://www.capitol.hawaii.gov/sessions/session{year}/bills/{typ}{num}_.HTM" if (year and typ and num) else None
+
+
+def _b_ks(session, ident):  # best-effort — kslegislature.org biennium URL
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    next_year = str(int(year) + 1)
+    return f"https://www.kslegislature.org/li/b{year}_{next_year[-2:]}/measures/{typ.lower()}_{num}/"
+
+
+STATE_BILL_URL_BUILDERS = {
+    "FL": _b_fl, "IN": _b_in, "MI": _b_mi, "NY": _b_ny, "MA": _b_ma,
+    "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj, "CT": _b_ct,
+    "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi, "KS": _b_ks,
+}
+
+
+# Generic state-legislature entry pages used when no deep-link is available.
+# These are stable canonical URLs that get the reader to the right site even
+# when we can't compute the per-bill URL.
+STATE_LEGISLATURE_URLS = {
+    "AL": "https://alison.legislature.state.al.us/",
+    "AK": "https://www.akleg.gov/",
+    "AZ": "https://www.azleg.gov/",
+    "AR": "https://www.arkleg.state.ar.us/",
+    "CA": "https://leginfo.legislature.ca.gov/",
+    "CO": "https://leg.colorado.gov/",
+    "CT": "https://www.cga.ct.gov/",
+    "DE": "https://legis.delaware.gov/",
+    "FL": "https://www.flsenate.gov/",
+    "GA": "https://www.legis.ga.gov/",
+    "HI": "https://www.capitol.hawaii.gov/",
+    "ID": "https://legislature.idaho.gov/",
+    "IL": "https://www.ilga.gov/",
+    "IN": "https://iga.in.gov/",
+    "IA": "https://www.legis.iowa.gov/",
+    "KS": "https://www.kslegislature.org/",
+    "KY": "https://legislature.ky.gov/",
+    "LA": "https://www.legis.la.gov/",
+    "ME": "https://legislature.maine.gov/",
+    "MD": "https://mgaleg.maryland.gov/",
+    "MA": "https://malegislature.gov/",
+    "MI": "https://www.legislature.mi.gov/",
+    "MN": "https://www.leg.mn.gov/",
+    "MS": "https://www.legislature.ms.gov/",
+    "MO": "https://www.senate.mo.gov/",
+    "MT": "https://leg.mt.gov/",
+    "NE": "https://nebraskalegislature.gov/",
+    "NV": "https://www.leg.state.nv.us/",
+    "NH": "https://www.gencourt.state.nh.us/",
+    "NJ": "https://www.njleg.state.nj.us/",
+    "NM": "https://www.nmlegis.gov/",
+    "NY": "https://www.nysenate.gov/",
+    "NC": "https://www.ncleg.gov/",
+    "ND": "https://www.legis.nd.gov/",
+    "OH": "https://www.legislature.ohio.gov/",
+    "OK": "https://www.oklegislature.gov/",
+    "OR": "https://olis.oregonlegislature.gov/",
+    "PA": "https://www.legis.state.pa.us/",
+    "RI": "https://www.rilegislature.gov/",
+    "SC": "https://www.scstatehouse.gov/",
+    "SD": "https://sdlegislature.gov/",
+    "TN": "https://www.capitol.tn.gov/legislation/",
+    "TX": "https://capitol.texas.gov/",
+    "UT": "https://le.utah.gov/",
+    "VT": "https://legislature.vermont.gov/",
+    "VA": "https://lis.virginia.gov/",
+    "WA": "https://leg.wa.gov/",
+    "WV": "https://www.wvlegislature.gov/",
+    "WI": "https://docs.legis.wisconsin.gov/",
+    "WY": "https://www.wyoleg.gov/",
+    "DC": "https://lims.dccouncil.gov/",
+    "PR": "https://www.oslpr.org/",
+}
 
 
 def link_for(b: dict) -> str:
     """
-    Build an Open States bill URL.
-    Pattern: https://openstates.org/{state}/bills/{session}/{identifier}/
-    Works for all 50 states + DC + PR (all jurisdictions Open States supports).
+    Build the best available URL for a bill. Tries the per-state deep-link
+    builder first, then falls back to the state's legislature homepage.
+    Returns "" only if the state code is unknown.
     """
-    state = (b.get("state") or "").lower()
-    session = _normalize_session_for_openstates(b.get("session", ""))
-    identifier = _normalize_identifier_for_openstates(b.get("identifier", ""))
-    if not (state and session and identifier):
+    state = (b.get("state") or "").upper()
+    session = b.get("session", "")
+    identifier = b.get("identifier", "")
+    if not state:
         return ""
-    return f"https://openstates.org/{state}/bills/{session}/{identifier}/"
+
+    builder = STATE_BILL_URL_BUILDERS.get(state)
+    if builder:
+        try:
+            url = builder(session, identifier)
+        except Exception:
+            url = None
+        if url:
+            return url
+
+    return STATE_LEGISLATURE_URLS.get(state, "")
 
 
 # ---------------------------------------------------------------------------
