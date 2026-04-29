@@ -104,7 +104,7 @@ jobs:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
           QWEN_API_URL: "http://localhost:11434/api/chat"
-          POST_LIMIT: "3"
+          POST_LIMIT: "4"
         run: python scripts/post_to_bluesky.py
 
       - name: Commit state changes
