@@ -11,6 +11,8 @@ On a cron (every 6 hours by default):
 3. `scripts/post_to_bluesky.py` walks `docs/` for new items (deduped by RSS `<guid>`), asks the local Qwen model for a one-sentence neutral summary, and posts to Bluesky with a clickable link.
 4. The workflow commits `state/posted.json` back to the repo so the next run knows what's already been posted.
 
+A second workflow runs **every Friday at ~4 pm ET** (`weekly-digest.yml`) and posts a threaded weekly digest: a root post summarizing the week's transportation-bill activity plus up to 6 reply posts highlighting the most significant updates (signed into law, passed, vetoed, etc.). Bills are scored by action significance and capped at 2 per state to keep the digest broad. Configure via env vars in the workflow: `DIGEST_LOOKBACK_DAYS`, `DIGEST_MAX_HIGHLIGHTS`, `DIGEST_PER_STATE_CAP`.
+
 ## Setup
 
 ### 1. Use this repo as a template
