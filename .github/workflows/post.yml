@@ -20,6 +20,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      QWEN_MODEL: "qwen2.5:1.5b"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,9 +75,13 @@ jobs:
           govbot logs > bills.jsonl
           echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
 
+      - name: Cache Ollama model
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-models-${{ env.QWEN_MODEL }}-v1
+
       - name: Install Ollama and pull Qwen model
-        env:
-          QWEN_MODEL: "qwen2.5:1.5b"
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           # Start Ollama in the background; logs to /tmp for debugging.
@@ -88,6 +94,8 @@ jobs:
             fi
             sleep 1
           done
+          # Cheap no-op when the model is already on disk (cache hit);
+          # otherwise does the full ~1 GB download.
           ollama pull "$QWEN_MODEL"
           ollama list
 
@@ -96,7 +104,6 @@ jobs:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
           QWEN_API_URL: "http://localhost:11434/api/chat"
-          QWEN_MODEL: "qwen2.5:1.5b"
           POST_LIMIT: "3"
         run: python scripts/post_to_bluesky.py
 
