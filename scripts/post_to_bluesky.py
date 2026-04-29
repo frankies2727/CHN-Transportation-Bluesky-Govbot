@@ -678,10 +678,28 @@ def _b_ks(session, ident):  # best-effort — kslegislature.org biennium URL
     return f"https://www.kslegislature.org/li/b{year}_{next_year[-2:]}/measures/{typ.lower()}_{num}/"
 
 
+def _b_wv(session, ident):  # verified — wvlegislature.gov Bill_Status form
+    # Regular sessions use sessiontype=RS; specials look like "2026 1X" / "1X" /
+    # "FS" in govbot's session string. We pass through whatever code follows
+    # the year if present, otherwise default to RS.
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    sessiontype = "RS"
+    m = re.search(r"(\d+X|FS|ES|\d+S)\b", session or "", re.IGNORECASE)
+    if m:
+        sessiontype = m.group(1).upper()
+    btype = "res" if any(t in typ for t in ("CR", "JR", "R")) and typ != "HB" and typ != "SB" else "bill"
+    return ("https://www.wvlegislature.gov/Bill_Status/Bills_history.cfm"
+            f"?input={num}&year={year}&sessiontype={sessiontype}&btype={btype}")
+
+
 STATE_BILL_URL_BUILDERS = {
     "FL": _b_fl, "IN": _b_in, "MI": _b_mi, "NY": _b_ny, "MA": _b_ma,
     "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj, "CT": _b_ct,
     "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi, "KS": _b_ks,
+    "WV": _b_wv,
 }
 
 
