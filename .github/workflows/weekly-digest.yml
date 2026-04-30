@@ -1,0 +1,82 @@
+name: govbot-bluesky-weekly-digest
+
+on:
+  # Friday 21:00 UTC = ~4 pm ET (5 pm EDT) -- captures the legislative week
+  # and gives readers weekend content.
+  schedule:
+    - cron: "0 21 * * FRI"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: govbot-bluesky-weekly-digest
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      QWEN_MODEL: "qwen2.5:1.5b"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Install govbot, fetch all supported states, dump JSONL
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/chihacknight/govbot/main/actions/govbot/scripts/install-nightly.sh | bash
+          export PATH="$HOME/.govbot/bin:$PATH"
+          govbot --version || true
+
+          STATES="al ak az ar ca co ct de fl ga hi id il in ia ks ky la me md ma mi mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv wi wy dc pr"
+          for state in $STATES; do
+            govbot clone "$state" 2>&1 || echo "  SKIPPED $state (not supported by govbot)"
+          done
+
+          govbot logs > bills.jsonl
+          echo "bills.jsonl is $(wc -l < bills.jsonl) lines"
+
+      - name: Cache Ollama model
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-models-${{ env.QWEN_MODEL }}-v1
+
+      - name: Install Ollama and pull Qwen model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve > /tmp/ollama.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama is ready."
+              break
+            fi
+            sleep 1
+          done
+          ollama pull "$QWEN_MODEL"
+          ollama list
+
+      - name: Build and post weekly digest thread
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          QWEN_API_URL: "http://localhost:11434/api/chat"
+          DIGEST_LOOKBACK_DAYS: "7"
+          DIGEST_MAX_HIGHLIGHTS: "6"
+          DIGEST_PER_STATE_CAP: "2"
+        run: python scripts/weekly_digest.py

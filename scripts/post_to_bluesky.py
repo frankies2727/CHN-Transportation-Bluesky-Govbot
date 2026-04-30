@@ -489,12 +489,16 @@ class BlueskyClient:
             return None
 
     def post(self, text: str, link_url: str, embed_title: str, embed_desc: str,
-             thumb_blob: dict | None = None) -> dict:
+             thumb_blob: dict | None = None,
+             reply: dict | None = None) -> dict:
         record = {
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        if reply:
+            # reply = {"root": {"uri":..., "cid":...}, "parent": {"uri":..., "cid":...}}
+            record["reply"] = reply
         if link_url:
             external = {"uri": link_url, "title": embed_title[:300], "description": embed_desc[:1000]}
             if thumb_blob:
