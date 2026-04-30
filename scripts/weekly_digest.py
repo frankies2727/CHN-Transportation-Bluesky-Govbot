@@ -25,6 +25,8 @@ from post_to_bluesky import (
     MAX_POST,
     BSKY_HANDLE,
     BSKY_PASSWORD,
+    STATE_FULL_NAME,
+    _format_date,
     compose_post,
     extract_fields,
     fetch_og_image,
@@ -40,6 +42,12 @@ DIGEST_LOOKBACK_DAYS = int(os.environ.get("DIGEST_LOOKBACK_DAYS", "7"))
 DIGEST_MAX_HIGHLIGHTS = int(os.environ.get("DIGEST_MAX_HIGHLIGHTS", "6"))
 DIGEST_PER_STATE_CAP = int(os.environ.get("DIGEST_PER_STATE_CAP", "2"))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
+
+# When the primary 7-day window is empty we widen progressively so a quiet
+# legislative week doesn't mean a silent feed. Once nothing turns up in the
+# widest window either, we fall back to a landscape thread (see
+# build_landscape_replies) so the bot always ships something informative.
+LOOKBACK_FALLBACK_WINDOWS = [DIGEST_LOOKBACK_DAYS, 14, 30]
 
 
 # ---------------------------------------------------------------------------
@@ -101,15 +109,29 @@ def score_action(action_desc: str) -> int:
 # Selection
 # ---------------------------------------------------------------------------
 
-def in_lookback_window(action_date: str, today: datetime) -> bool:
+def in_lookback_window(action_date: str, today: datetime, days: int = DIGEST_LOOKBACK_DAYS) -> bool:
     if not action_date:
         return False
     try:
         d = datetime.strptime(action_date, "%Y-%m-%d")
     except ValueError:
         return False
-    cutoff = today - timedelta(days=DIGEST_LOOKBACK_DAYS)
+    cutoff = today - timedelta(days=days)
     return d >= cutoff and d <= today
+
+
+def collect_transportation_bills(records: list[dict]) -> list[dict]:
+    """Extract every transportation-bill log entry from the raw govbot records."""
+    out: list[dict] = []
+    for r in records:
+        b = extract_fields(r)
+        if b and is_transportation(b):
+            out.append(b)
+    return out
+
+
+def candidates_in_window(bills: list[dict], today: datetime, days: int) -> list[dict]:
+    return [b for b in bills if in_lookback_window(b["action_date"], today, days)]
 
 
 def select_highlights(candidates: list[dict]) -> list[dict]:
@@ -155,15 +177,26 @@ def _format_short(d: datetime) -> str:
     return f"{abbrev[d.month]} {d.day}"
 
 
-def compose_root(today: datetime, total_updates: int, distinct_states: int) -> str:
+def compose_root(today: datetime, total_updates: int, distinct_states: int,
+                 window_days: int = DIGEST_LOOKBACK_DAYS) -> str:
     end = today
-    start = today - timedelta(days=DIGEST_LOOKBACK_DAYS - 1)
+    start = today - timedelta(days=window_days - 1)
     range_str = f"{_format_short(start)}–{_format_short(end)}, {end.year}"
+    if window_days <= DIGEST_LOOKBACK_DAYS:
+        framing = (
+            f"{total_updates} bill updates tracked across {distinct_states} state(s) "
+            "this week. Top highlights 🧵"
+        )
+    else:
+        framing = (
+            f"Quieter past 7 days, so we widened the lens. {total_updates} bill "
+            f"update(s) across {distinct_states} state(s) over the last "
+            f"{window_days} days. Top highlights 🧵"
+        )
     text = (
         "🗳️ Transportation Bills Weekly Digest\n"
         f"{range_str}\n\n"
-        f"{total_updates} bill updates tracked across {distinct_states} state(s) "
-        "this week. Top highlights 🧵"
+        f"{framing}"
     )
     if len(text) > MAX_POST:
         text = text[:MAX_POST - 1] + "…"
@@ -171,66 +204,124 @@ def compose_root(today: datetime, total_updates: int, distinct_states: int) -> s
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Landscape (empty-week) thread
 # ---------------------------------------------------------------------------
 
-def main() -> int:
-    if not DRY_RUN and (not BSKY_HANDLE or not BSKY_PASSWORD):
-        print("ERROR: BLUESKY_HANDLE and BLUESKY_APP_PASSWORD must be set.", file=sys.stderr)
-        return 1
+def _parse_iso(d: str) -> datetime:
+    try:
+        return datetime.strptime(d or "", "%Y-%m-%d")
+    except ValueError:
+        return datetime.min
 
-    records = load_bills(JSONL_PATH)
-    if not records:
-        return 0
 
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+def compose_landscape_root(today: datetime, total_bills: int, distinct_states: int) -> str:
+    text = (
+        "🗳️ Transportation Bills Weekly Digest\n"
+        f"Week of {_format_short(today)}, {today.year}\n\n"
+        "Quiet stretch — no notable floor or executive action to flag from the "
+        f"past month. But we're still tracking {total_bills} transportation "
+        f"bill(s) across {distinct_states} jurisdiction(s). A landscape "
+        "check-in 🧵"
+    )
+    if len(text) > MAX_POST:
+        text = text[:MAX_POST - 1] + "…"
+    return text
 
-    # Filter to transportation bills with action dates in the lookback window.
-    candidates: list[dict] = []
-    for r in records:
-        b = extract_fields(r)
-        if not b:
-            continue
-        if not is_transportation(b):
-            continue
-        if not in_lookback_window(b["action_date"], today):
-            continue
-        candidates.append(b)
 
-    print(f"Found {len(candidates)} transportation bill update(s) in the past "
-          f"{DIGEST_LOOKBACK_DAYS} days.")
-    if not candidates:
-        print("No activity to digest. Exiting without posting.")
-        return 0
+def build_landscape_replies(all_bills: list[dict]) -> list[str]:
+    """
+    Build the reply texts for the empty-week thread. Reads from the full set
+    of tracked transportation bills (no recency filter), giving the reader a
+    snapshot of where things stand even when the floor calendar is quiet.
+    """
+    replies: list[str] = []
 
-    distinct_states = len({b["state"] or "?" for b in candidates})
-    state_counts = Counter(b["state"] or "?" for b in candidates)
-    print(f"  by state: {', '.join(f'{s}={n}' for s,n in state_counts.most_common(15))}")
+    # Collapse to one entry per bill (most-recent action wins) so counts and
+    # latest-activity lists aren't inflated by repeated log entries.
+    latest_per_bill: dict[tuple[str, str], dict] = {}
+    for b in all_bills:
+        key = (b["state"], b["identifier"])
+        prev = latest_per_bill.get(key)
+        if prev is None or _parse_iso(b["action_date"]) > _parse_iso(prev["action_date"]):
+            latest_per_bill[key] = b
+    unique_bills = list(latest_per_bill.values())
 
-    highlights = select_highlights(candidates)
-    print(f"\nSelected {len(highlights)} highlight(s) (cap={DIGEST_MAX_HIGHLIGHTS}, "
-          f"per-state-cap={DIGEST_PER_STATE_CAP}):")
-    for b in highlights:
-        print(f"  [{b['_score']:>3}] {b['state']} {b['identifier']} "
-              f"({b['action_date']}): {b['action_desc'][:70]}")
+    # --- Reply 1: most-tracked jurisdictions -------------------------------
+    state_counts = Counter((b["state"] or "?") for b in unique_bills)
+    top_states = state_counts.most_common(7)
+    if top_states:
+        lines = ["🏛️ Most-tracked jurisdictions right now:"]
+        for s, n in top_states:
+            full = STATE_FULL_NAME.get(s, s)
+            lines.append(f"• {full}: {n}")
+        text = "\n".join(lines)
+        if len(text) > MAX_POST:
+            text = text[:MAX_POST - 1] + "…"
+        replies.append(text)
 
-    root_text = compose_root(today, len(candidates), distinct_states)
+    # --- Reply 2: most-recent tracked actions (any date) -------------------
+    recent = sorted(unique_bills, key=lambda b: _parse_iso(b["action_date"]), reverse=True)[:5]
+    if recent:
+        lines = ["🕒 Most-recent tracked activity:"]
+        for b in recent:
+            nice = _format_date(b["action_date"]) or b["action_date"] or "—"
+            state = b["state"] or "?"
+            lines.append(f"• {state} {b['identifier']} — {nice}")
+        text = "\n".join(lines)
+        if len(text) > MAX_POST:
+            text = text[:MAX_POST - 1] + "…"
+        replies.append(text)
+
+    # --- Reply 3: closing nudge -------------------------------------------
+    replies.append(
+        "🔔 Many statehouses are between sessions or on recess this time of "
+        "year. When bills start moving again, they'll show up in our daily "
+        "posts and next week's digest. See you then."
+    )
+
+    return replies
+
+
+# ---------------------------------------------------------------------------
+# Posting
+# ---------------------------------------------------------------------------
+
+def post_thread(client: BlueskyClient | None, root_text: str,
+                replies: list[tuple[str, str, str, str, dict | None]]) -> None:
+    """
+    Post a root + chain of replies. Each reply tuple is
+    (text, link_url, embed_title, embed_desc, thumb_blob_or_None).
+    Used by both the highlights thread and the landscape fallback.
+    """
     print(f"\n--- ROOT ({len(root_text)} chars) ---\n{root_text}\n---")
 
-    client = None if DRY_RUN else BlueskyClient(BSKY_HANDLE, BSKY_PASSWORD)
-    root_ref: dict | None = None
-    parent_ref: dict | None = None
-
-    if client:
+    if client is None:
+        root_ref = {"uri": "[dry-run-root-uri]", "cid": "[dry-run-root-cid]"}
+    else:
         result = client.post(root_text, link_url="", embed_title="", embed_desc="")
         root_ref = {"uri": result["uri"], "cid": result["cid"]}
-        parent_ref = root_ref
         print(f"  posted root: {result['uri']}")
         time.sleep(2)
-    else:
-        root_ref = {"uri": "[dry-run-root-uri]", "cid": "[dry-run-root-cid]"}
-        parent_ref = root_ref
 
+    parent_ref = root_ref
+    for text, link, ec_title, ec_desc, thumb_blob in replies:
+        print(f"\n--- REPLY ({len(text)} chars) ---\n{text}\n---")
+        if client is None:
+            continue
+        try:
+            reply = {"root": root_ref, "parent": parent_ref}
+            result = client.post(text, link, ec_title, ec_desc,
+                                 thumb_blob=thumb_blob, reply=reply)
+            parent_ref = {"uri": result["uri"], "cid": result["cid"]}
+            time.sleep(2)
+        except Exception as e:
+            print(f"  ! reply post failed: {e}", file=sys.stderr)
+            continue
+
+
+def _build_highlight_replies(client: BlueskyClient | None,
+                             highlights: list[dict]) -> list[tuple[str, str, str, str, dict | None]]:
+    replies: list[tuple[str, str, str, str, dict | None]] = []
     for b in highlights:
         summary = summarize(b)
         text, link, ec_title, ec_desc = compose_post(b, summary)
@@ -246,21 +337,72 @@ def main() -> int:
                     img_bytes, img_mime = prepared
                     thumb_blob = client.upload_blob(img_bytes, img_mime)
 
-        print(f"\n--- REPLY: {b['state']} {b['identifier']} ({b['action_date']}, "
-              f"score={b['_score']}) ---\n{text}\n---")
+        print(f"  prepared reply: {b['state']} {b['identifier']} "
+              f"({b['action_date']}, score={b['_score']})")
+        replies.append((text, link, ec_title, ec_desc, thumb_blob))
+    return replies
 
-        if client:
-            try:
-                reply = {"root": root_ref, "parent": parent_ref}
-                result = client.post(text, link, ec_title, ec_desc,
-                                     thumb_blob=thumb_blob, reply=reply)
-                parent_ref = {"uri": result["uri"], "cid": result["cid"]}
-                time.sleep(2)
-            except Exception as e:
-                print(f"  ! reply post failed: {e}", file=sys.stderr)
-                continue
 
-    print(f"\nDone. Posted thread with {len(highlights)} highlight(s).")
+def main() -> int:
+    if not DRY_RUN and (not BSKY_HANDLE or not BSKY_PASSWORD):
+        print("ERROR: BLUESKY_HANDLE and BLUESKY_APP_PASSWORD must be set.", file=sys.stderr)
+        return 1
+
+    records = load_bills(JSONL_PATH)
+    if not records:
+        return 0
+
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+
+    all_bills = collect_transportation_bills(records)
+    if not all_bills:
+        # Truly empty corpus — landscape stats would say "0 bills, 0 states",
+        # which isn't informative. Skip rather than post nonsense.
+        print("No transportation bills found at all. Nothing to digest.")
+        return 0
+
+    # Try the primary 7-day window first, then widen if it's empty so a
+    # quiet legislative week doesn't kill the digest.
+    candidates: list[dict] = []
+    chosen_window = LOOKBACK_FALLBACK_WINDOWS[0]
+    for window in LOOKBACK_FALLBACK_WINDOWS:
+        candidates = candidates_in_window(all_bills, today, window)
+        print(f"Lookback {window}d: {len(candidates)} transportation bill update(s).")
+        if candidates:
+            chosen_window = window
+            break
+
+    client = None if DRY_RUN else BlueskyClient(BSKY_HANDLE, BSKY_PASSWORD)
+
+    if candidates:
+        distinct_states = len({b["state"] or "?" for b in candidates})
+        state_counts = Counter(b["state"] or "?" for b in candidates)
+        print(f"  by state: {', '.join(f'{s}={n}' for s,n in state_counts.most_common(15))}")
+
+        highlights = select_highlights(candidates)
+        print(f"\nSelected {len(highlights)} highlight(s) (cap={DIGEST_MAX_HIGHLIGHTS}, "
+              f"per-state-cap={DIGEST_PER_STATE_CAP}, window={chosen_window}d):")
+        for b in highlights:
+            print(f"  [{b['_score']:>3}] {b['state']} {b['identifier']} "
+                  f"({b['action_date']}): {b['action_desc'][:70]}")
+
+        root_text = compose_root(today, len(candidates), distinct_states, chosen_window)
+        replies = _build_highlight_replies(client, highlights)
+        post_thread(client, root_text, replies)
+        print(f"\nDone. Posted thread with {len(highlights)} highlight(s) (window={chosen_window}d).")
+        return 0
+
+    # No floor activity in any window — ship a landscape thread so the
+    # weekly slot still produces something informative.
+    distinct_states = len({(b["state"] or "?") for b in all_bills})
+    print(f"No recent floor activity. Posting landscape thread "
+          f"({len(all_bills)} bills across {distinct_states} jurisdiction(s)).")
+
+    root_text = compose_landscape_root(today, len(all_bills), distinct_states)
+    reply_texts = build_landscape_replies(all_bills)
+    replies = [(t, "", "", "", None) for t in reply_texts]
+    post_thread(client, root_text, replies)
+    print(f"\nDone. Posted landscape thread with {len(replies)} reply post(s).")
     return 0
 
 
