@@ -694,6 +694,21 @@ def _b_ks(session, ident):  # best-effort — kslegislature.org biennium URL
     return f"https://www.kslegislature.org/li/b{year}_{next_year[-2:]}/measures/{typ.lower()}_{num}/"
 
 
+def _b_pa(session, ident):  # verified — legis.state.pa.us cfdocs billInfo form
+    # PA identifiers are HB/SB/HR/SR + number. Chamber is the first letter
+    # of the prefix, the rest is the bill type (B for bills, R for resolutions).
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    body = typ[0]
+    if body not in ("H", "S"):
+        return None
+    btype = typ[1:] or "B"
+    return ("https://www.legis.state.pa.us/cfdocs/billInfo/billInfo.cfm"
+            f"?sYear={year}&sInd=0&body={body}&type={btype}&bn={num}")
+
+
 def _b_wv(session, ident):  # verified — wvlegislature.gov Bill_Status form
     # Regular sessions use sessiontype=RS; specials look like "2026 1X" / "1X" /
     # "FS" in govbot's session string. We pass through whatever code follows
@@ -715,7 +730,7 @@ STATE_BILL_URL_BUILDERS = {
     "FL": _b_fl, "IN": _b_in, "MI": _b_mi, "NY": _b_ny, "MA": _b_ma,
     "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj, "CT": _b_ct,
     "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi, "KS": _b_ks,
-    "WV": _b_wv,
+    "WV": _b_wv, "PA": _b_pa,
 }
 
 
