@@ -709,6 +709,33 @@ def _b_pa(session, ident):  # verified — legis.state.pa.us cfdocs billInfo for
             f"?sYear={year}&sInd=0&body={body}&type={btype}&bn={num}")
 
 
+def _b_ak(session, ident):  # verified — akleg.gov basis/Bill/Detail
+    # Alaska's URL uses the calendar year of the session. OpenStates often
+    # encodes Alaska sessions as the legislature number ("34" = 2025-2026);
+    # the Nth Alaska Legislature convenes in calendar year 1957 + 2*N.
+    year = _first_year(session)
+    if not year:
+        m = re.match(r"\s*(\d{1,2})\b", session or "")
+        if m:
+            year = str(1957 + 2 * int(m.group(1)))
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    return f"https://www.akleg.gov/basis/Bill/Detail/{year}?Root={typ}{num}"
+
+
+def _b_or(session, ident):  # verified — olis.oregonlegislature.gov Measures/Overview
+    # OLIS session URL component is YYYY{R|S}N — e.g. 2025R1 (regular session)
+    # or 2025S1 (1st special session). Fall back to R1 if unspecified.
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    m = re.search(r"([RSrs]\d+)", session or "")
+    sub = m.group(1).upper() if m else "R1"
+    return f"https://olis.oregonlegislature.gov/liz/{year}{sub}/Measures/Overview/{typ}{num}"
+
+
 def _b_wv(session, ident):  # verified — wvlegislature.gov Bill_Status form
     # Regular sessions use sessiontype=RS; specials look like "2026 1X" / "1X" /
     # "FS" in govbot's session string. We pass through whatever code follows
@@ -730,7 +757,7 @@ STATE_BILL_URL_BUILDERS = {
     "FL": _b_fl, "IN": _b_in, "MI": _b_mi, "NY": _b_ny, "MA": _b_ma,
     "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj, "CT": _b_ct,
     "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi, "KS": _b_ks,
-    "WV": _b_wv, "PA": _b_pa,
+    "WV": _b_wv, "PA": _b_pa, "AK": _b_ak, "OR": _b_or,
 }
 
 
