@@ -901,9 +901,15 @@ def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
                 new_len = max(0, len(desc_part) - overflow - 1)
                 if new_len > 8:
                     action_line = date_prefix + desc_part[:new_len].rstrip() + "…"
+                    action_block = f"\n\n{action_line}"
                 else:
-                    action_line = nice_date
-            action_block = f"\n\n{action_line}"
+                    # Not enough room for a meaningful description — drop
+                    # the action block entirely rather than emit a bare
+                    # date, which conveys no information on its own.
+                    action_line = ""
+                    action_block = ""
+            else:
+                action_block = f"\n\n{action_line}"
         text = assemble(head, summary_block, action_block, link_block)
 
     if len(text) > MAX_POST:
