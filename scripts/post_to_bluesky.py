@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Filter govbot's bills.jsonl for transportation-related bills across all 50
-states + DC, dedupe against state/posted.json, summarize with a local Qwen
-model (served by Ollama), and post to Bluesky with rich link-card embeds.
+Filter govbot's bills.jsonl for the active category (transportation by
+default), dedupe against the per-category state file, summarize with a
+local Qwen model (served by Ollama), and post to Bluesky with rich
+link-card embeds.
 
-Bill links go to openstates.org — a unified bill viewer maintained by the
-Open States project. Each bill page also links back to the state's official
-source. Far more reliable than hand-building 50 different state URL patterns.
+The category is selected via the BOT_CATEGORY env var and read from
+categories/<name>/config.yml. See scripts/category.py.
+
+Bill links go to each state's official legislature page when we have a
+deep-link builder for that state, otherwise to the state legislature
+homepage as a fallback.
 """
 
 from __future__ import annotations
@@ -23,15 +27,19 @@ from urllib.parse import urlparse, urljoin
 
 import requests
 
+from category import Category, load_active_category
+
 ROOT = Path(__file__).resolve().parent.parent
 JSONL_PATH = ROOT / "bills.jsonl"
-STATE_FILE = ROOT / "state" / "posted.json"
+
+CATEGORY: Category = load_active_category()
+STATE_FILE = CATEGORY.state_file_path()
 
 POST_LIMIT = int(os.environ.get("POST_LIMIT", "4"))  # how many bluesky posts per run
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
-BSKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "")
-BSKY_PASSWORD = os.environ.get("BLUESKY_APP_PASSWORD", "")
+BSKY_HANDLE = CATEGORY.bluesky_handle()
+BSKY_PASSWORD = CATEGORY.bluesky_password()
 
 BLUESKY_API = "https://bsky.social/xrpc"
 
@@ -68,35 +76,6 @@ STATE_FULL_NAME = {
     "VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming",
     "DC":"Washington D.C.","PR":"Puerto Rico",
 }
-
-TRANSPORTATION_KEYWORDS = [
-    "transportation", "transit",
-    "rail", "railroad", "railway", "amtrak", "metra",
-    "subway", "streetcar", "light rail", "commuter rail",
-    "ferry",
-    "bicycle", "bicyclist", "bike lane", "cyclist",
-    "pedestrian", "sidewalk", "crosswalk", "walkability",
-    "airport", "aviation", "airline", "aircraft",
-    "freight", "trucking", "commercial vehicle",
-    "rideshare", "ride-share", "ride share",
-    "ev charging", "electric vehicle", "autonomous vehicle",
-    "scooter", "e-bike",
-    "school bus", "bus driver", "bus drivers",
-    "highway", "tollway", "roadway", "expressway", "interstate",
-    "tollbooth", "toll road", "toll bridge",
-    "traffic signal", "traffic safety", "road construction",
-    "complete streets", "vision zero", "pedestrian safety",
-    "transportation infrastructure",
-    "motor vehicle", "motor fuel tax", "gas tax",
-    "vehicle registration", "license plate", "driver's license",
-    "speed limit", "seatbelt", "helmet law",
-    "parking", "congestion", "traffic",
-]
-
-_KEYWORD_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in TRANSPORTATION_KEYWORDS) + r")\b",
-    re.IGNORECASE,
-)
 
 MAX_POST = 290
 LINK_PREFIX = "🔗 "
@@ -209,11 +188,6 @@ def extract_fields(record: dict) -> dict | None:
         "dedup_key": dedup_key,
         "same_day_key": same_day_key,
     }
-
-
-def is_transportation(b: dict) -> bool:
-    haystack = " ".join([b["title"], b["abstract"], b["subjects"]]).lower()
-    return bool(_KEYWORD_PATTERN.search(haystack))
 
 
 def best_display_text(b: dict) -> str:
@@ -394,16 +368,6 @@ def prepare_image_for_bluesky(img_bytes: bytes, mime: str) -> tuple[bytes, str] 
 # Summarization
 # ---------------------------------------------------------------------------
 
-_SUMMARY_SYSTEM_PROMPT = (
-    "You summarize US legislative bills for a civic-engagement Bluesky bot "
-    "focused on transportation. Output exactly ONE plain-text sentence under "
-    "180 characters describing what the bill does, neutrally. No emoji, no "
-    "hashtags, no editorializing, no surrounding quotes, no leading phrase "
-    "like 'This bill'. Just the substance. Do not include any preamble, "
-    "explanation, or trailing notes."
-)
-
-
 def _clean_summary(text: str) -> str:
     text = (text or "").strip()
     # Small models sometimes wrap output in quotes or markdown code fences.
@@ -436,7 +400,7 @@ def summarize(b: dict) -> str:
             json={
                 "model": QWEN_MODEL,
                 "messages": [
-                    {"role": "system", "content": _SUMMARY_SYSTEM_PROMPT},
+                    {"role": "system", "content": CATEGORY.summary_system_prompt()},
                     {"role": "user", "content": user_prompt},
                 ],
                 "stream": False,
@@ -848,21 +812,8 @@ def link_for(b: dict) -> str:
 # Composition
 # ---------------------------------------------------------------------------
 
-def emoji_for(b: dict) -> str:
-    s = " ".join([b["title"], b["abstract"], b["subjects"]]).lower()
-    if any(w in s for w in ("transit", "school bus", "bus driver", "subway")): return "🚌"
-    if any(w in s for w in ("rail", "amtrak", "railroad", "railway", "metra")): return "🚆"
-    if any(w in s for w in ("airport", "aviation", "aircraft")):                return "✈️"
-    if any(w in s for w in ("bicycle", "bike lane", "cyclist")):                return "🚲"
-    if any(w in s for w in ("pedestrian", "sidewalk", "crosswalk")):            return "🚶"
-    if any(w in s for w in ("electric vehicle", "ev charging")):                return "🔌"
-    if any(w in s for w in ("highway", "tollway", "expressway", "interstate")): return "🛣️"
-    if any(w in s for w in ("truck", "freight", "commercial vehicle")):         return "🚛"
-    return "🚗"
-
-
 def compose_post(b: dict, summary: str) -> tuple[str, str, str, str]:
-    emoji = emoji_for(b)
+    emoji = CATEGORY.emoji_for(b)
     link = link_for(b)
     link_block = f"\n\n{LINK_PREFIX}{link}" if link else ""
 
@@ -935,6 +886,22 @@ def load_state() -> dict:
             return json.loads(STATE_FILE.read_text())
         except json.JSONDecodeError:
             pass
+
+    # One-time migration: pre-refactor the transportation bot wrote to
+    # state/posted.json. If the new per-category file doesn't exist yet but
+    # the legacy file does, seed the new state from it so we don't re-post
+    # the entire backlog after the path change.
+    legacy = CATEGORY.legacy_state_file_path()
+    if legacy.exists():
+        try:
+            seeded = json.loads(legacy.read_text())
+            print(f"  state migration: seeded {STATE_FILE.relative_to(ROOT)} "
+                  f"from legacy {legacy.relative_to(ROOT)} "
+                  f"({len(seeded.get('posted', []))} entries).")
+            return seeded
+        except json.JSONDecodeError:
+            pass
+
     return {"posted": []}
 
 
@@ -949,7 +916,8 @@ def save_state(state: dict) -> None:
 
 def main() -> int:
     if not DRY_RUN and (not BSKY_HANDLE or not BSKY_PASSWORD):
-        print("ERROR: BLUESKY_HANDLE and BLUESKY_APP_PASSWORD must be set.", file=sys.stderr)
+        print(f"ERROR: {CATEGORY.bluesky_handle_env()} and "
+              f"{CATEGORY.bluesky_password_env()} must be set.", file=sys.stderr)
         return 1
 
     records = load_bills(JSONL_PATH)
@@ -964,7 +932,7 @@ def main() -> int:
         b = extract_fields(r)
         if not b:
             continue
-        if not is_transportation(b):
+        if not CATEGORY.matches(b):
             continue
         if b["dedup_key"] in seen:
             continue
@@ -978,7 +946,7 @@ def main() -> int:
             unique_by_day[b["same_day_key"]] = b
     candidates = list(unique_by_day.values())
 
-    print(f"Found {len(candidates)} new transportation-related bill update(s).")
+    print(f"Found {len(candidates)} new {CATEGORY.topic_phrase} bill update(s).")
     if not candidates:
         return 0
 

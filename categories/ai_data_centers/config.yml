@@ -1,0 +1,82 @@
+# AI / Data Centers bot — best-effort seed combining AI policy and data
+# center siting/regulation. If reader interest diverges, easy to split into
+# two folders + two secret pairs later.
+
+name: ai_data_centers
+display_name: "AI & Data Centers"
+prompt_topic: "artificial intelligence regulation, algorithmic accountability, deepfakes, automated decision-making, and data center siting and energy use"
+default_emoji: "🤖"
+
+keywords:
+  # AI / algorithmic
+  - artificial intelligence
+  - generative AI
+  - generative artificial intelligence
+  - machine learning
+  - deepfake
+  - deepfakes
+  - synthetic media
+  - algorithmic
+  - algorithmic accountability
+  - algorithmic discrimination
+  - automated decision
+  - automated decision-making
+  - automated decisionmaking
+  - automated decision system
+  - facial recognition
+  - biometric
+  - biometrics
+  - chatbot
+  - chatbots
+  - large language model
+  - LLM
+  - foundation model
+  - AI governance
+  - AI safety
+  - AI act
+  - generative content
+  - synthetic content
+  - AI-generated
+  - AI generated
+
+  # Data centers
+  - data center
+  - data centers
+  - hyperscale
+  - hyperscaler
+  - colocation facility
+  - server farm
+  - data processing facility
+  - cloud computing facility
+  - GPU cluster
+  - high-performance computing facility
+
+  # Crossover
+  - cryptocurrency mining
+  - bitcoin mining
+  - crypto mining
+  - data privacy
+  - consumer data
+  - personal data
+
+emojis:
+  - emoji: "🧠"
+    match: ["artificial intelligence", "machine learning", "large language model", "LLM", "foundation model", "generative AI"]
+  - emoji: "🎭"
+    match: ["deepfake", "deepfakes", "synthetic media", "synthetic content", "AI-generated", "AI generated"]
+  - emoji: "👁️"
+    match: ["facial recognition", "biometric", "biometrics"]
+  - emoji: "⚖️"
+    match: ["algorithmic accountability", "algorithmic discrimination", "automated decision", "AI governance", "AI safety", "AI act"]
+  - emoji: "🏢"
+    match: ["data center", "data centers", "hyperscale", "colocation", "server farm"]
+  - emoji: "⚡"
+    match: ["GPU cluster", "high-performance computing"]
+  - emoji: "₿"
+    match: ["cryptocurrency mining", "bitcoin mining", "crypto mining"]
+  - emoji: "🔒"
+    match: ["data privacy", "consumer data", "personal data"]
+
+digest:
+  thread_title: "🤖 AI & Data Center Bills Weekly Digest"
+  topic_phrase: "AI and data center"

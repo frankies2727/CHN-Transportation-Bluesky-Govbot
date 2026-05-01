@@ -1,0 +1,80 @@
+# Immigration bot — best-effort seed. Tune keywords after a week of dry-run
+# output by inspecting which bills get matched and which don't.
+
+name: immigration
+display_name: "Immigration"
+prompt_topic: "immigration, asylum, refugee resettlement, and immigrant rights"
+default_emoji: "🛂"
+
+keywords:
+  - immigration
+  - immigrant
+  - immigrants
+  - undocumented
+  - noncitizen
+  - non-citizen
+  - migrant
+  - migrants
+  - refugee
+  - refugees
+  - asylum
+  - asylee
+  - asylees
+  - visa
+  - visas
+  - green card
+  - permanent resident
+  - naturalization
+  - naturalized
+  - citizenship
+  - dreamer
+  - dreamers
+  - DACA
+  - sanctuary city
+  - sanctuary cities
+  - sanctuary state
+  - sanctuary jurisdiction
+  - ICE
+  - immigration and customs enforcement
+  - border
+  - borderlands
+  - border patrol
+  - deportation
+  - deport
+  - deported
+  - removal proceedings
+  - detention
+  - detainee
+  - detainees
+  - work authorization
+  - work permit
+  - E-Verify
+  - eVerify
+  - mixed-status family
+  - mixed status family
+  - in-state tuition
+  - language access
+  - LEP
+  - limited english proficient
+  - human trafficking
+  - smuggling
+
+emojis:
+  - emoji: "🌎"
+    match: ["refugee", "asylum", "asylee"]
+  - emoji: "🆔"
+    match: ["green card", "visa", "permanent resident", "naturalization", "citizenship", "work authorization", "work permit"]
+  - emoji: "🚧"
+    match: ["border", "border patrol", "borderlands"]
+  - emoji: "🏛️"
+    match: ["sanctuary city", "sanctuary cities", "sanctuary state", "sanctuary jurisdiction"]
+  - emoji: "🎓"
+    match: ["dreamer", "DACA", "in-state tuition"]
+  - emoji: "👮"
+    match: ["ICE", "deportation", "deport", "removal proceedings", "detention", "detainee"]
+  - emoji: "🗣️"
+    match: ["language access", "LEP", "limited english proficient"]
+
+digest:
+  thread_title: "🛂 Immigration Bills Weekly Digest"
+  topic_phrase: "immigration"

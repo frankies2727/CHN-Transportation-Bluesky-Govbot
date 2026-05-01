@@ -1,17 +1,19 @@
 # govbot-bluesky
 
-A Bluesky bot that posts new tagged legislative bills with AI summaries, powered by [chihacknight/govbot](https://github.com/chihacknight/govbot). Runs on GitHub Actions for free.
+A multi-category Bluesky bot platform that posts new state-legislative bill activity with AI summaries, powered by [chihacknight/govbot](https://github.com/chihacknight/govbot). Runs on GitHub Actions for free.
+
+Each **category** (transportation, immigration, taxation, AI/data centers, …) is its own Bluesky account with its own keyword list, emoji map, summary focus, and dedup state. All categories share the same workflow run, so adding a new bot doesn't multiply CI minutes.
 
 ## How it works
 
-On a cron (every 6 hours by default):
+On a cron (every 6 hours by default), one workflow:
 
-1. GitHub Actions installs and runs `govbot`, which clones state legislation repos, tags bills against your `govbot.yml`, and emits RSS feeds into `docs/`.
-2. The workflow installs [Ollama](https://ollama.com/) on the runner and pulls a small **Qwen** model (`qwen2.5:1.5b`) — summarization runs entirely on the runner, no third-party API key required.
-3. `scripts/post_to_bluesky.py` walks `docs/` for new items (deduped by RSS `<guid>`), asks the local Qwen model for a one-sentence neutral summary, and posts to Bluesky with a clickable link.
-4. The workflow commits `state/posted.json` back to the repo so the next run knows what's already been posted.
+1. Installs and runs `govbot`, which clones state legislation repos and dumps `bills.jsonl`. **This is the slow step (~8 min)** and now runs once for all categories.
+2. Installs [Ollama](https://ollama.com/) on the runner and pulls a small **Qwen** model (`qwen2.5:1.5b`) — summarization runs entirely on the runner, no third-party API key required.
+3. Loops over `categories/*/`: for each one, `scripts/post_to_bluesky.py` filters `bills.jsonl` against the category's keywords, asks the local Qwen model for a one-sentence neutral summary, and posts to that category's Bluesky account with a clickable link.
+4. Commits each `categories/<name>/bills_used.json` back to the repo so the next run knows what's already been posted.
 
-A second workflow runs **every Friday at ~4 pm ET** (`weekly-digest.yml`) and posts a threaded weekly digest: a root post summarizing the week's transportation-bill activity plus up to 6 reply posts highlighting the most significant updates (signed into law, passed, vetoed, etc.). Bills are scored by action significance and capped at 2 per state to keep the digest broad. Configure via env vars in the workflow: `DIGEST_LOOKBACK_DAYS`, `DIGEST_MAX_HIGHLIGHTS`, `DIGEST_PER_STATE_CAP`.
+A second workflow runs **every Friday at ~4 pm ET** (`weekly-digest.yml`) and posts a threaded weekly digest per category: a root post summarizing the week's activity plus up to 6 reply posts highlighting the most significant updates (signed into law, passed, vetoed, etc.). Bills are scored by action significance and capped at 2 per state to keep the digest broad. Configure via env vars in the workflow: `DIGEST_LOOKBACK_DAYS`, `DIGEST_MAX_HIGHLIGHTS`, `DIGEST_PER_STATE_CAP`.
 
 ## Setup
 
@@ -23,25 +25,41 @@ Run `govbot` locally once with no config — it launches a wizard that creates `
 
 If you'd rather skip the wizard, see the [govbot docs](https://chihacknight.github.io/govbot/).
 
-### 3. Add repository secrets
-In **Settings → Secrets and variables → Actions**, add two secrets:
+### 3. Add repository secrets per category
+In **Settings → Secrets and variables → Actions**, add **two secrets per category**:
 
 | Secret | Value |
 | --- | --- |
-| `BLUESKY_HANDLE` | Your bot's handle, e.g. `mybot.bsky.social` |
-| `BLUESKY_APP_PASSWORD` | An app password from Bluesky **Settings → App Passwords** (not your main password!) |
+| `BLUESKY_HANDLE_<NAME>` | The category's handle, e.g. `chn-transportation.bsky.social` |
+| `BLUESKY_APP_PASSWORD_<NAME>` | An app password from Bluesky **Settings → App Passwords** (not your main password!) |
+
+`<NAME>` is the upper-case category folder name. So for `categories/transportation/`, the secrets are `BLUESKY_HANDLE_TRANSPORTATION` and `BLUESKY_APP_PASSWORD_TRANSPORTATION`. For `categories/ai_data_centers/`: `BLUESKY_HANDLE_AI_DATA_CENTERS` and `BLUESKY_APP_PASSWORD_AI_DATA_CENTERS`.
 
 Summarization uses a local Qwen model via Ollama on the GitHub Actions runner, so no third-party LLM API key is needed.
 
 ### 4. Enable Actions
-On the Actions tab, enable workflows. The first run can be triggered manually via **Run workflow** on `govbot-bluesky`.
+On the Actions tab, enable workflows. The first run can be triggered manually via **Run workflow** on `govbot-bluesky-post`.
+
+## Adding a category
+
+The whole point of the `categories/` layout is that adding a new bot is a drop-in. The shared workflow already loops every folder under `categories/`, so once these three steps are done the new bot goes live on the next cron tick — no Python or workflow edits required.
+
+1. **Create the folder** `categories/<name>/` and add a `config.yml` (copy `categories/transportation/config.yml` as a starting point). Fill in the category's `keywords`, `emojis`, `prompt_topic`, and digest copy.
+2. **Add Bluesky secrets** in repo settings: `BLUESKY_HANDLE_<NAME>` and `BLUESKY_APP_PASSWORD_<NAME>` (upper-case folder name, underscores preserved).
+3. **Commit** the new folder. The next scheduled run picks it up.
+
+To dry-run before committing:
+
+```bash
+BOT_CATEGORY=<name> DRY_RUN=1 python scripts/post_to_bluesky.py
+```
 
 ## Configuration knobs
 
 Edit `.github/workflows/post.yml`:
 
 - `cron:` — change the schedule. `0 */6 * * *` is every 6 hours.
-- `POST_LIMIT` — max posts per run (default 5). Prevents flooding if many bills land at once.
+- `POST_LIMIT` — max posts per run **per category** (default 4). Prevents flooding if many bills land at once.
 
 Edit `scripts/post_to_bluesky.py` (or override via env vars in the workflow):
 
@@ -58,9 +76,9 @@ ollama pull qwen2.5:1.5b
 # Make sure `ollama serve` is running (the desktop app starts it automatically;
 # on Linux the install script enables a systemd service).
 
-# 2. Run the script in dry-run mode
+# 2. Dry-run a specific category
 pip install -r requirements.txt
-DRY_RUN=1 python scripts/post_to_bluesky.py
+BOT_CATEGORY=transportation DRY_RUN=1 python scripts/post_to_bluesky.py
 ```
 
 Dry run prints composed posts without hitting Bluesky. State still updates so you can iterate without re-summarizing.
@@ -70,16 +88,31 @@ If you don't have Ollama running locally, summaries fall back to a truncated abs
 ## Layout
 
 ```
-.github/workflows/post.yml   # cron + pipeline
-scripts/post_to_bluesky.py   # the bot
-state/posted.json            # GUIDs we've already posted (committed)
-docs/                        # RSS feeds (created by govbot)
-govbot.yml                   # your sources & tags (you create this)
+.github/workflows/
+  post.yml                                     # cron + pipeline (loops every category)
+  weekly-digest.yml                            # Friday digest (loops every category)
+scripts/
+  post_to_bluesky.py                           # shared bot (parameterized by BOT_CATEGORY)
+  weekly_digest.py                             # shared digest
+  category.py                                  # config loader
+categories/
+  transportation/
+    config.yml                                 # keywords, emojis, prompt focus
+    bills_used.json                            # per-category dedup state (committed)
+  immigration/
+    config.yml
+    bills_used.json
+  taxation/
+    config.yml
+    bills_used.json
+  ai_data_centers/
+    config.yml
+    bills_used.json
 ```
 
 ## Notes & gotchas
 
-- **First run is loud.** Without a `state/posted.json`, every existing item in your feeds is "new". The `POST_LIMIT` cap protects you, but consider seeding the state file with current GUIDs (see below) before enabling the cron.
+- **First run is loud.** Without a `categories/<name>/bills_used.json`, every matching item is "new". The `POST_LIMIT` cap protects you, but consider seeding the state file with current GUIDs (see below) before enabling the cron. The legacy `state/posted.json` is migrated automatically into `categories/transportation/bills_used.json` on first run.
 - **Idempotency** is via RSS `<guid>`. If govbot's RSS doesn't include guids, the bot falls back to the link, then to a `feed_name:title` synthetic id.
 - **Permissions.** The workflow needs `contents: write` to commit state back. This is set in the workflow file already, but org-level settings can override it — check **Settings → Actions → General → Workflow permissions** if commits aren't landing.
 

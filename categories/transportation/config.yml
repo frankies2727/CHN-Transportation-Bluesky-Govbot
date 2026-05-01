@@ -1,0 +1,96 @@
+# Transportation bot — extracted verbatim from the pre-refactor hard-coded
+# values in scripts/post_to_bluesky.py so output stays byte-identical.
+
+name: transportation
+display_name: "Transportation"
+prompt_topic: "transportation"
+default_emoji: "🚗"
+
+keywords:
+  - transportation
+  - transit
+  - rail
+  - railroad
+  - railway
+  - amtrak
+  - metra
+  - subway
+  - streetcar
+  - light rail
+  - commuter rail
+  - ferry
+  - bicycle
+  - bicyclist
+  - bike lane
+  - cyclist
+  - pedestrian
+  - sidewalk
+  - crosswalk
+  - walkability
+  - airport
+  - aviation
+  - airline
+  - aircraft
+  - freight
+  - trucking
+  - commercial vehicle
+  - rideshare
+  - ride-share
+  - ride share
+  - ev charging
+  - electric vehicle
+  - autonomous vehicle
+  - scooter
+  - e-bike
+  - school bus
+  - bus driver
+  - bus drivers
+  - highway
+  - tollway
+  - roadway
+  - expressway
+  - interstate
+  - tollbooth
+  - toll road
+  - toll bridge
+  - traffic signal
+  - traffic safety
+  - road construction
+  - complete streets
+  - vision zero
+  - pedestrian safety
+  - transportation infrastructure
+  - motor vehicle
+  - motor fuel tax
+  - gas tax
+  - vehicle registration
+  - license plate
+  - driver's license
+  - speed limit
+  - seatbelt
+  - helmet law
+  - parking
+  - congestion
+  - traffic
+
+emojis:
+  - emoji: "🚌"
+    match: ["transit", "school bus", "bus driver", "subway"]
+  - emoji: "🚆"
+    match: ["rail", "amtrak", "railroad", "railway", "metra"]
+  - emoji: "✈️"
+    match: ["airport", "aviation", "aircraft"]
+  - emoji: "🚲"
+    match: ["bicycle", "bike lane", "cyclist"]
+  - emoji: "🚶"
+    match: ["pedestrian", "sidewalk", "crosswalk"]
+  - emoji: "🔌"
+    match: ["electric vehicle", "ev charging"]
+  - emoji: "🛣️"
+    match: ["highway", "tollway", "expressway", "interstate"]
+  - emoji: "🚛"
+    match: ["truck", "freight", "commercial vehicle"]
+
+digest:
+  thread_title: "🗳️ Transportation Bills Weekly Digest"
+  topic_phrase: "transportation"
