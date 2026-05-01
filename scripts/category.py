@@ -132,10 +132,6 @@ class Category:
     def state_file_path(self) -> Path:
         return CATEGORIES_DIR / self.name / "bills_used.json"
 
-    def legacy_state_file_path(self) -> Path:
-        """Pre-refactor location, kept for one-time migration."""
-        return ROOT / "state" / "posted.json"
-
     def _secret_suffix(self) -> str:
         return self.name.upper()
 

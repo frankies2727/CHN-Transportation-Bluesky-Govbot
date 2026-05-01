@@ -112,28 +112,33 @@ categories/
 
 ## Notes & gotchas
 
-- **First run is loud.** Without a `categories/<name>/bills_used.json`, every matching item is "new". The `POST_LIMIT` cap protects you, but consider seeding the state file with current GUIDs (see below) before enabling the cron. The legacy `state/posted.json` is migrated automatically into `categories/transportation/bills_used.json` on first run.
+- **First run is loud.** Without a populated `categories/<name>/bills_used.json`, every matching item is "new". Each category folder ships with an empty `{"posted": []}` file; the `POST_LIMIT` cap protects you, but consider seeding the file with current GUIDs (see below) before enabling the cron.
 - **Idempotency** is via RSS `<guid>`. If govbot's RSS doesn't include guids, the bot falls back to the link, then to a `feed_name:title` synthetic id.
 - **Permissions.** The workflow needs `contents: write` to commit state back. This is set in the workflow file already, but org-level settings can override it — check **Settings → Actions → General → Workflow permissions** if commits aren't landing.
 
 ### Seeding state to skip the backlog
 
+After running `govbot logs > bills.jsonl` once, seed a category's `bills_used.json` with the dedup keys for everything currently in the feed. The bot will then treat those as "already posted" and only flag genuinely new updates from then on:
+
 ```bash
-# After your first govbot run produces docs/:
-python -c "
-import json, glob
-from xml.etree import ElementTree as ET
-guids = []
-for f in glob.glob('docs/**/*.xml', recursive=True):
-    for item in ET.parse(f).getroot().iter('item'):
-        g = item.findtext('guid') or item.findtext('link') or item.findtext('title')
-        if g: guids.append(g.strip())
-import os; os.makedirs('state', exist_ok=True)
-json.dump({'posted': sorted(set(guids))}, open('state/posted.json','w'), indent=2)
-print(f'Seeded {len(set(guids))} GUIDs.')
+BOT_CATEGORY=transportation python -c "
+import os, json, sys
+sys.path.insert(0, 'scripts')
+from post_to_bluesky import CATEGORY, JSONL_PATH, load_bills, extract_fields
+keys = []
+for r in load_bills(JSONL_PATH):
+    b = extract_fields(r)
+    if b and CATEGORY.matches(b):
+        keys.append(b['dedup_key'])
+out = CATEGORY.state_file_path()
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps({'posted': sorted(set(keys))}, indent=2))
+print(f'Seeded {len(set(keys))} dedup keys into {out}.')
 "
-git add state/posted.json && git commit -m "seed posted state" && git push
+git add categories/transportation/bills_used.json && git commit -m "seed transportation backlog" && git push
 ```
+
+Repeat with `BOT_CATEGORY=<name>` for each category before enabling its workflow.
 
 ## License
 

@@ -886,22 +886,6 @@ def load_state() -> dict:
             return json.loads(STATE_FILE.read_text())
         except json.JSONDecodeError:
             pass
-
-    # One-time migration: pre-refactor the transportation bot wrote to
-    # state/posted.json. If the new per-category file doesn't exist yet but
-    # the legacy file does, seed the new state from it so we don't re-post
-    # the entire backlog after the path change.
-    legacy = CATEGORY.legacy_state_file_path()
-    if legacy.exists():
-        try:
-            seeded = json.loads(legacy.read_text())
-            print(f"  state migration: seeded {STATE_FILE.relative_to(ROOT)} "
-                  f"from legacy {legacy.relative_to(ROOT)} "
-                  f"({len(seeded.get('posted', []))} entries).")
-            return seeded
-        except json.JSONDecodeError:
-            pass
-
     return {"posted": []}
 
 
