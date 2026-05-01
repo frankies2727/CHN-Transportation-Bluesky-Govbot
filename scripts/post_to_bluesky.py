@@ -620,13 +620,19 @@ def _b_mo(session, ident):  # best-effort — chamber-specific deep link by year
     return f"https://www.senate.mo.gov/{year[-2:]}info/BTS_Web/Bill.aspx?SessionType={code}&BillID={typ}{num}"
 
 
-def _b_mn(session, ident):  # best-effort — revisor.mn.gov bills bill.php
+def _b_mn(session, ident):  # verified — revisor.mn.gov bills bill.php
     year = _first_year(session)
     typ, num = _split_ident(ident)
     if not (year and typ and num):
         return None
     chamber = "House" if typ.startswith("H") else "Senate"
-    return f"https://www.revisor.mn.gov/bills/bill.php?b={chamber}&f={typ}{num}&y={year}"
+    # MN's `ssn` param: 0 = regular, 1 = first special, 2 = second special, …
+    # Govbot encodes specials as e.g. "2025s1". Without `ssn` the page errors
+    # with "Session year and type are required".
+    m = re.search(r"s(\d+)", session or "", re.IGNORECASE)
+    ssn = m.group(1) if m else "0"
+    return (f"https://www.revisor.mn.gov/bills/bill.php"
+            f"?b={chamber}&f={typ}{num}&ssn={ssn}&y={year}")
 
 
 def _b_nm(session, ident):  # best-effort — nmlegis.gov Legislation form
@@ -700,6 +706,17 @@ def _b_or(session, ident):  # verified — olis.oregonlegislature.gov Measures/O
     return f"https://olis.oregonlegislature.gov/liz/{year}{sub}/Measures/Overview/{typ}{num}"
 
 
+def _b_co(session, ident):  # verified — leg.colorado.gov /bills/<typ><yy>-<num>
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    # CO conventions: HB numbers are 4 digits (e.g. HB25-1001); SB and joint /
+    # concurrent / simple resolutions are 3 digits (SB25-001, SJR25-006).
+    width = 4 if typ == "HB" else 3
+    return f"https://leg.colorado.gov/bills/{typ.lower()}{year[-2:]}-{num.zfill(width)}"
+
+
 def _b_wv(session, ident):  # verified — wvlegislature.gov Bill_Status form
     # Regular sessions use sessiontype=RS; specials look like "2026 1X" / "1X" /
     # "FS" in govbot's session string. We pass through whatever code follows
@@ -721,7 +738,7 @@ STATE_BILL_URL_BUILDERS = {
     "FL": _b_fl, "IN": _b_in, "MI": _b_mi, "NY": _b_ny, "MA": _b_ma,
     "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj, "CT": _b_ct,
     "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi, "KS": _b_ks,
-    "WV": _b_wv, "PA": _b_pa, "AK": _b_ak, "OR": _b_or,
+    "WV": _b_wv, "PA": _b_pa, "AK": _b_ak, "OR": _b_or, "CO": _b_co,
 }
 
 
