@@ -1,0 +1,85 @@
+# Taxation bot — best-effort seed. Tune keywords after a week of dry-run
+# output by inspecting which bills get matched and which don't.
+
+name: taxation
+display_name: "Taxation"
+prompt_topic: "state and local taxation, including income, sales, property, and excise taxes, and tax credits or exemptions"
+default_emoji: "💰"
+
+keywords:
+  - taxation
+  - tax credit
+  - tax credits
+  - tax exemption
+  - tax exemptions
+  - tax exempt
+  - tax-exempt
+  - tax deduction
+  - tax deductions
+  - tax cut
+  - tax cuts
+  - tax rate
+  - tax rates
+  - tax bracket
+  - tax brackets
+  - tax base
+  - income tax
+  - personal income tax
+  - corporate income tax
+  - corporate tax
+  - franchise tax
+  - sales tax
+  - use tax
+  - excise tax
+  - property tax
+  - property taxes
+  - real estate tax
+  - school tax
+  - millage
+  - millage rate
+  - assessor
+  - assessment
+  - homestead exemption
+  - homestead credit
+  - earned income tax credit
+  - EITC
+  - child tax credit
+  - estate tax
+  - inheritance tax
+  - gift tax
+  - capital gains tax
+  - severance tax
+  - fuel tax
+  - tobacco tax
+  - alcohol tax
+  - sugar tax
+  - soda tax
+  - carbon tax
+  - tax increment financing
+  - TIF district
+  - revenue raising
+  - revenue raiser
+  - tax holiday
+  - tax abatement
+
+emojis:
+  - emoji: "🏠"
+    match: ["property tax", "real estate tax", "homestead", "millage", "assessor", "assessment"]
+  - emoji: "🛒"
+    match: ["sales tax", "use tax"]
+  - emoji: "🧾"
+    match: ["income tax", "tax bracket", "tax rate"]
+  - emoji: "🏢"
+    match: ["corporate tax", "corporate income tax", "franchise tax", "tax abatement", "tax increment financing", "TIF district"]
+  - emoji: "👶"
+    match: ["child tax credit", "earned income tax credit", "EITC"]
+  - emoji: "🪦"
+    match: ["estate tax", "inheritance tax", "gift tax"]
+  - emoji: "⛏️"
+    match: ["severance tax"]
+  - emoji: "🚬"
+    match: ["tobacco tax", "alcohol tax", "sugar tax", "soda tax"]
+
+digest:
+  thread_title: "💰 Taxation Bills Weekly Digest"
+  topic_phrase: "taxation"

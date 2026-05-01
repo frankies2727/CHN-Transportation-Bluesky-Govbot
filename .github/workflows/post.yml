@@ -1,4 +1,4 @@
-name: govbot-bluesky-transportation
+name: govbot-bluesky-post
 
 on:
   schedule:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: govbot-bluesky-transportation
+  group: govbot-bluesky-post
   cancel-in-progress: false
 
 defaults:
@@ -99,19 +99,33 @@ jobs:
           ollama pull "$QWEN_MODEL"
           ollama list
 
-      - name: Filter, summarize, and post to Bluesky
+      - name: Filter, summarize, and post to Bluesky (all categories)
         env:
-          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
-          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          # toJSON(secrets) exposes the entire secret map so dropping in a new
+          # category never requires editing this workflow. The script reads
+          # BLUESKY_HANDLE_<NAME> / BLUESKY_APP_PASSWORD_<NAME> from this map
+          # at runtime based on BOT_CATEGORY.
+          ALL_SECRETS: ${{ toJSON(secrets) }}
           QWEN_API_URL: "http://localhost:11434/api/chat"
           POST_LIMIT: "4"
-        run: python scripts/post_to_bluesky.py
+        run: |
+          shopt -s nullglob
+          for category_dir in categories/*/; do
+            cat=$(basename "$category_dir")
+            if [ ! -f "$category_dir/config.yml" ]; then
+              echo "--- $cat: no config.yml, skipping ---"
+              continue
+            fi
+            echo "=== Posting for category: $cat ==="
+            BOT_CATEGORY="$cat" python scripts/post_to_bluesky.py \
+              || echo "  $cat post failed, continuing with next category"
+          done
 
       - name: Commit state changes
         run: |
           git config user.name  "govbot-bluesky[bot]"
           git config user.email "govbot-bluesky[bot]@users.noreply.github.com"
-          git add state/posted.json || true
+          git add categories/*/bills_used.json || true
           if git diff --cached --quiet; then
             echo "No state changes to commit."
           else

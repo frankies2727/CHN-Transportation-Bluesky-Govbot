@@ -14,6 +14,10 @@ concurrency:
   group: govbot-bluesky-weekly-digest
   cancel-in-progress: false
 
+# All categories run from the same govbot fetch + Ollama install. Adding a
+# category means dropping a categories/<name>/config.yml and adding the
+# matching BLUESKY_HANDLE_<NAME> / BLUESKY_APP_PASSWORD_<NAME> repo secrets.
+
 defaults:
   run:
     shell: bash
@@ -71,12 +75,22 @@ jobs:
           ollama pull "$QWEN_MODEL"
           ollama list
 
-      - name: Build and post weekly digest thread
+      - name: Build and post weekly digest thread (all categories)
         env:
-          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
-          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          ALL_SECRETS: ${{ toJSON(secrets) }}
           QWEN_API_URL: "http://localhost:11434/api/chat"
           DIGEST_LOOKBACK_DAYS: "7"
           DIGEST_MAX_HIGHLIGHTS: "6"
           DIGEST_PER_STATE_CAP: "2"
-        run: python scripts/weekly_digest.py
+        run: |
+          shopt -s nullglob
+          for category_dir in categories/*/; do
+            cat=$(basename "$category_dir")
+            if [ ! -f "$category_dir/config.yml" ]; then
+              echo "--- $cat: no config.yml, skipping ---"
+              continue
+            fi
+            echo "=== Digest for category: $cat ==="
+            BOT_CATEGORY="$cat" python scripts/weekly_digest.py \
+              || echo "  $cat digest failed, continuing with next category"
+          done
