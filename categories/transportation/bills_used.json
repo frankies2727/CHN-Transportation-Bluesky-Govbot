@@ -34,6 +34,7 @@
     "MS|SB2461|2026-02-03|Died In Committee",
     "MS|SB2736|2026-02-03|Died In Committee",
     "MS|SB2831|2026-02-03|Died In Committee",
+    "NC|SB 257|2025-06-02|Placed On Cal For 06/03/2025",
     "NC|SB 257|2025-06-03|Failed Concur In H Com Sub",
     "NJ|A1391|2026-01-13|WITHDRAWN APP P.L.2025, c.198.",
     "NJ|A1525|2026-01-13|WITHDRAWN APP P.L.2025, c.241.",
@@ -44,6 +45,7 @@
     "NJ|S2709|2026-01-13|WITHDRAWN APP P.L.2025, c.378.",
     "NY|A6784|2025-06-11|ORDERED TO THIRD READING RULES CAL.624",
     "NY|A6784|2025-06-11|RULES REPORT CAL.624",
+    "NY|A6784|2025-06-11|SUBSTITUTED BY S6640",
     "NY|S7760|2025-09-05|DELIVERED TO GOVERNOR",
     "OH|HB 50|2025-06-18|Passed",
     "OH|HB 50|2025-06-24|Sent To The Governor",
@@ -51,6 +53,7 @@
     "OH|HB 50|2025-09-30|Effective",
     "OH|HB 50|2025-09-30|Effective 9/30/25",
     "OR|HB3991|2025-09-29|Motion to suspend the rules to amend the",
+    "OR|HB3991|2025-09-29|Thatcher declared potential conflict of ",
     "OR|HB3991|2025-10-02|Speaker signed.",
     "OR|HB3991|2025-10-09|President signed.",
     "OR|HB3991|2025-11-08|Governor signed.",
@@ -58,10 +61,11 @@
     "PA|HB 257|2025-06-24|Re-reported as committed",
     "PA|HB 257|2025-08-12|Final passage",
     "PA|HB 257|2025-08-12|Third consideration, with amendments",
+    "PA|HR 68|2025-06-18|Laid on the table (Pursuant to House Rul",
     "WV|HB 4263|2026-01-14|To Government Organization",
     "WV|SB 178|2026-01-14|To Transportation and Infrastructure",
     "WV|SB 221|2026-01-14|To Economic Development",
     "WV|SB 238|2026-01-14|To Transportation and Infrastructure"
   ],
-  "last_run": "2026-04-30T19:12:42.842408+00:00"
+  "last_run": "2026-05-01T01:36:06.567137+00:00"
 }
