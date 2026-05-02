@@ -559,6 +559,20 @@ def _b_in(session, ident):  # verified — iga.in.gov clean URL
     return f"https://iga.in.gov/{year}/bills/{typ.lower()}{num}" if (year and typ and num) else None
 
 
+def _b_ia(session, ident):  # verified — legis.iowa.gov BillBook
+    # Iowa General Assemblies are 2-year terms convening in odd calendar
+    # years. GA N spans years (1843 + 2*N) and the next year, so
+    # GA = (year - 1843) // 2 works for either year of the biennium:
+    # 91st GA = 2025-2026, 90th GA = 2023-2024.
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    ga = (int(year) - 1843) // 2
+    return ("https://www.legis.iowa.gov/legislation/BillBook"
+            f"?ga={ga}&ba={typ}{num}")
+
+
 def _b_mi(session, ident):  # verified — needs 4-digit zero-padded number
     year = _first_year(session)
     typ, num = _split_ident(ident)
@@ -790,11 +804,11 @@ def _b_wv(session, ident):  # verified — wvlegislature.gov Bill_Status form
 
 
 STATE_BILL_URL_BUILDERS = {
-    "FL": _b_fl, "IN": _b_in, "MI": _b_mi, "NY": _b_ny, "MA": _b_ma,
-    "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj, "CT": _b_ct,
-    "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi, "KS": _b_ks,
-    "WV": _b_wv, "PA": _b_pa, "AK": _b_ak, "OR": _b_or, "CO": _b_co,
-    "WA": _b_wa, "TN": _b_tn,
+    "FL": _b_fl, "IN": _b_in, "IA": _b_ia, "MI": _b_mi, "NY": _b_ny,
+    "MA": _b_ma, "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj,
+    "CT": _b_ct, "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi,
+    "KS": _b_ks, "WV": _b_wv, "PA": _b_pa, "AK": _b_ak, "OR": _b_or,
+    "CO": _b_co, "WA": _b_wa, "TN": _b_tn,
 }
 
 
