@@ -1,5 +1,6 @@
 {
   "posted": [
+    "AK|HB55|2025-05-20|(H) CC REPORT TAKEN UP",
     "AK|HB55|2025-05-20|(H) CC RPT ADOPTED Y33 N7 CCS HB 55",
     "AK|HB55|2025-05-20|(S) CC RPT ADPTD Y20 N- CCS HB 55",
     "AK|HB55|2025-05-20|(S) EFFECTIVE DATE(S) SAME AS PASSAGE",
@@ -31,6 +32,7 @@
     "MA|SD3290|2025-10-16|Placed on file",
     "MI|HB 4119|2025-11-04|placed on third reading",
     "MI|HB 4119|2025-11-04|read a second time",
+    "MI|SB 0174|2025-05-13|PLACED ON IMMEDIATE PASSAGE",
     "MN|SF 3514|2026-02-17|Chief author added Holmstrom",
     "MS|HB1725|2026-02-03|Died In Committee",
     "MS|HB436|2026-02-02|Title Suff Do Pass",
@@ -41,6 +43,7 @@
     "MS|SB2831|2026-02-03|Died In Committee",
     "NC|SB 257|2025-05-21|Added to Calendar",
     "NC|SB 257|2025-05-21|Amend Adopted A23",
+    "NC|SB 257|2025-05-21|Amend Adopted A38",
     "NC|SB 257|2025-05-21|Amend Adopted A43",
     "NC|SB 257|2025-05-22|Amend Adopted A46",
     "NC|SB 257|2025-05-23|Regular Message Sent To Senate",
@@ -67,6 +70,7 @@
     "OH|HB 50|2025-09-30|Effective",
     "OH|HB 50|2025-09-30|Effective 9/30/25",
     "OR|HB3991|2025-09-01|Recommendation: Do pass with amendments ",
+    "OR|HB3991|2025-09-01|Second reading.",
     "OR|HB3991|2025-09-01|Third reading. Carried by McLain. Passed",
     "OR|HB3991|2025-09-02|Recommendation: Do pass the A-Eng. bill.",
     "OR|HB3991|2025-09-02|Second reading.",
@@ -91,5 +95,5 @@
     "WV|SB 221|2026-01-14|To Economic Development",
     "WV|SB 238|2026-01-14|To Transportation and Infrastructure"
   ],
-  "last_run": "2026-05-02T01:28:19.854987+00:00"
+  "last_run": "2026-05-02T07:21:27.730738+00:00"
 }
