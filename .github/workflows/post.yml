@@ -107,7 +107,7 @@ jobs:
           # at runtime based on BOT_CATEGORY.
           ALL_SECRETS: ${{ toJSON(secrets) }}
           QWEN_API_URL: "http://localhost:11434/api/chat"
-          POST_LIMIT: "4"
+          POST_LIMIT: "2"
         run: |
           shopt -s nullglob
           for category_dir in categories/*/; do
