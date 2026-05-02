@@ -532,9 +532,25 @@ def _leading_int(s: str) -> str:
 # scheme and may need adjustment if the state changes its site.
 
 def _b_fl(session, ident):  # verified — flsenate.gov serves both chambers
+    # Florida special sessions append a letter to the year (Special Session A,
+    # B, C, …). The canonical URL is /Session/Bill/<year><letter>/<number>
+    # — the letter goes on the year, NOT the bill number. Govbot/OpenStates
+    # may carry the letter on the session string ("2026D") or as a trailing
+    # letter on the identifier ("SB 2D" / "SB 2-D"); accept either.
     year = _first_year(session)
-    _, num = _split_ident(ident)
-    return f"https://flsenate.gov/Session/Bill/{year}/{num}" if (year and num) else None
+    if not year:
+        return None
+    suffix = ""
+    m = re.search(r"\d{4}\s*([A-Za-z])\b", session or "")
+    if m:
+        suffix = m.group(1).upper()
+    m = re.match(r"\s*([A-Za-z]+)\s*0*(\d+)\s*-?\s*([A-Za-z]?)\s*$", ident or "")
+    if not m:
+        return None
+    num = m.group(2)
+    if not suffix and m.group(3):
+        suffix = m.group(3).upper()
+    return f"https://flsenate.gov/Session/Bill/{year}{suffix}/{num}"
 
 
 def _b_in(session, ident):  # verified — iga.in.gov clean URL
