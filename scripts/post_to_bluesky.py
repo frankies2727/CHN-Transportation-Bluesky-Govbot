@@ -733,6 +733,45 @@ def _b_co(session, ident):  # verified — leg.colorado.gov /bills/<typ><yy>-<nu
     return f"https://leg.colorado.gov/bills/{typ.lower()}{year[-2:]}-{num.zfill(width)}"
 
 
+def _b_wa(session, ident):  # verified — app.leg.wa.gov billsummary
+    # WA bienniums start in odd years (2025-2026 biennium → Year=2025 in
+    # the URL). If govbot hands us an even-year session string we still
+    # want the start year, so drop one when needed.
+    typ, num = _split_ident(ident)
+    year = _first_year(session)
+    if not (typ and num and year):
+        return None
+    y = int(year)
+    if y % 2 == 0:
+        y -= 1
+    return (f"https://app.leg.wa.gov/billsummary"
+            f"?BillNumber={num}&Year={y}&Initiative=false")
+
+
+def _b_tn(session, ident):  # verified — wapp.capitol.tn.gov BillInfo form
+    # Tennessee URLs key off the General Assembly number (e.g. 114th GA
+    # spans 2025-2026). Govbot/OpenStates may carry the GA directly as a
+    # 3-digit session string ("114", "114S1") or as a calendar year; handle
+    # both. GA N spans years (2025 + 2*(N-114)) and the next year.
+    typ, num = _split_ident(ident)
+    if not (typ and num):
+        return None
+    ga = ""
+    # Match 3 leading digits not followed by another digit, so we accept
+    # both "114" and "114S1" but don't misread a year like "2025" as GA 202.
+    m = re.match(r"\s*(\d{3})(?!\d)", session or "")
+    if m:
+        ga = m.group(1)
+    else:
+        year = _first_year(session)
+        if year:
+            ga = str(114 + (int(year) - 2025) // 2)
+    if not ga:
+        return None
+    return ("https://wapp.capitol.tn.gov/apps/BillInfo/Default.aspx"
+            f"?BillNumber={typ}{num}&GA={ga}")
+
+
 def _b_wv(session, ident):  # verified — wvlegislature.gov Bill_Status form
     # Regular sessions use sessiontype=RS; specials look like "2026 1X" / "1X" /
     # "FS" in govbot's session string. We pass through whatever code follows
@@ -755,6 +794,7 @@ STATE_BILL_URL_BUILDERS = {
     "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj, "CT": _b_ct,
     "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi, "KS": _b_ks,
     "WV": _b_wv, "PA": _b_pa, "AK": _b_ak, "OR": _b_or, "CO": _b_co,
+    "WA": _b_wa, "TN": _b_tn,
 }
 
 
