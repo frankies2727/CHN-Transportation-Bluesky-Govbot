@@ -1,5 +1,6 @@
 {
   "posted": [
+    "AK|HB55|2025-05-19|(H) CC REPORT READ AND HELD",
     "AK|HB55|2025-05-19|(H) CC REPORT: CCS HB 55 RECEIVED 5/18 9",
     "AK|HB55|2025-05-20|(H) CC REPORT TAKEN UP",
     "AK|HB55|2025-05-20|(H) CC RPT ADOPTED Y33 N7 CCS HB 55",
@@ -48,6 +49,7 @@
     "NC|SB 257|2025-05-21|Amend Adopted A38",
     "NC|SB 257|2025-05-21|Amend Adopted A43",
     "NC|SB 257|2025-05-21|Amend Failed A30",
+    "NC|SB 257|2025-05-21|Amend Tabled A41",
     "NC|SB 257|2025-05-22|Amend Adopted A46",
     "NC|SB 257|2025-05-23|Regular Message Sent To Senate",
     "NC|SB 257|2025-05-27|Regular Message Received For Concurrence",
@@ -99,5 +101,5 @@
     "WV|SB 221|2026-01-14|To Economic Development",
     "WV|SB 238|2026-01-14|To Transportation and Infrastructure"
   ],
-  "last_run": "2026-05-02T12:45:53.304039+00:00"
+  "last_run": "2026-05-03T01:30:32.230569+00:00"
 }
