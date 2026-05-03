@@ -97,8 +97,18 @@ class Category:
     # ------------------------------------------------------------------
 
     def matches(self, b: dict) -> bool:
-        haystack = " ".join([b.get("title", ""), b.get("abstract", ""), b.get("subjects", "")]).lower()
-        return bool(self._keyword_re.search(haystack))
+        # Title is the strongest signal — a single keyword hit there is enough.
+        # Abstract/subjects are noisier (omnibus appropriations bills name every
+        # department and line item, so a lone "transportation" mention from a
+        # mental-health budget's capital line item shouldn't pull the bill into
+        # the transportation feed). Require at least two distinct keyword hits
+        # there before counting a match without title support.
+        title = (b.get("title") or "").lower()
+        if self._keyword_re.search(title):
+            return True
+        body = " ".join([b.get("abstract", ""), b.get("subjects", "")]).lower()
+        distinct = {m.group(1).lower() for m in self._keyword_re.finditer(body)}
+        return len(distinct) >= 2
 
     def emoji_for(self, b: dict) -> str:
         s = " ".join([b.get("title", ""), b.get("abstract", ""), b.get("subjects", "")]).lower()
