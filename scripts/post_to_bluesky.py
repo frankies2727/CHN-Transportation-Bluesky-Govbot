@@ -37,6 +37,10 @@ STATE_FILE = CATEGORY.state_file_path()
 
 POST_LIMIT = int(os.environ.get("POST_LIMIT", "4"))  # how many bluesky posts per run
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
+# og:image fetching is paused by default. Set FETCH_OG_IMAGE=1 to re-enable
+# thumbnail scraping from bill-page URLs. When off, posts still get an external
+# link card — just without the image.
+FETCH_OG_IMAGE = os.environ.get("FETCH_OG_IMAGE", "0") == "1"
 
 BSKY_HANDLE = CATEGORY.bluesky_handle()
 BSKY_PASSWORD = CATEGORY.bluesky_password()
@@ -1064,7 +1068,7 @@ def main() -> int:
         text, link, ec_title, ec_desc = compose_post(b, summary)
 
         thumb_blob = None
-        if link:
+        if link and FETCH_OG_IMAGE:
             print(f"  IMG: fetching og:image for {link}")
             fetched = fetch_og_image(link)
             if fetched:
