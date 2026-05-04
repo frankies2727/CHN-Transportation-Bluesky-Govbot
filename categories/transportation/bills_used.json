@@ -16,6 +16,7 @@
     "HI|HB368|2025-12-08|Carried over to 2026 Regular Session.",
     "HI|HB59|2025-12-08|Carried over to 2026 Regular Session.",
     "HI|SB1088|2025-12-08|Carried over to 2026 Regular Session.",
+    "IA|HF 395|2025-05-08|Passed House, yeas 64, nays 20.",
     "IA|HF 395|2025-05-09|Message from House.",
     "IA|HF 395|2025-05-13|Explanation of vote.",
     "IA|HF 395|2025-05-19|Reported correctly enrolled, signed by S",
@@ -55,6 +56,7 @@
     "NC|SB 257|2025-05-21|Amend Failed A21",
     "NC|SB 257|2025-05-21|Amend Failed A30",
     "NC|SB 257|2025-05-21|Amend Failed A35",
+    "NC|SB 257|2025-05-21|Amend Failed A44",
     "NC|SB 257|2025-05-21|Amend Tabled A41",
     "NC|SB 257|2025-05-22|Amend Adopted A46",
     "NC|SB 257|2025-05-23|Regular Message Sent To Senate",
@@ -107,5 +109,5 @@
     "WV|SB 221|2026-01-14|To Economic Development",
     "WV|SB 238|2026-01-14|To Transportation and Infrastructure"
   ],
-  "last_run": "2026-05-04T02:19:23.094079+00:00"
+  "last_run": "2026-05-04T08:17:18.206892+00:00"
 }
