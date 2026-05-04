@@ -1,0 +1,116 @@
+# Housing bot — best-effort seed. Tune keywords after a week of dry-run
+# output by inspecting which bills get matched and which don't.
+
+name: housing
+display_name: "Housing"
+prompt_topic: "housing policy, including affordable housing, tenant protections, zoning, homelessness, and home ownership"
+default_emoji: "🏠"
+
+keywords:
+  - housing
+  - affordable housing
+  - housing affordability
+  - public housing
+  - subsidized housing
+  - section 8
+  - housing voucher
+  - housing vouchers
+  - housing choice voucher
+  - low-income housing
+  - low income housing
+  - LIHTC
+  - low-income housing tax credit
+  - housing trust fund
+  - workforce housing
+  - supportive housing
+  - permanent supportive housing
+  - transitional housing
+  - rental assistance
+  - emergency rental assistance
+  - rent
+  - rent control
+  - rent stabilization
+  - rent cap
+  - rent increase
+  - rental housing
+  - tenant
+  - tenants
+  - tenant protection
+  - tenant protections
+  - tenant rights
+  - landlord
+  - landlords
+  - landlord-tenant
+  - eviction
+  - evictions
+  - eviction moratorium
+  - just cause eviction
+  - source of income discrimination
+  - security deposit
+  - habitability
+  - warranty of habitability
+  - homeownership
+  - home ownership
+  - first-time homebuyer
+  - first time homebuyer
+  - down payment assistance
+  - mortgage
+  - mortgages
+  - foreclosure
+  - foreclosures
+  - homeless
+  - homelessness
+  - unhoused
+  - encampment
+  - encampments
+  - shelter
+  - shelters
+  - emergency shelter
+  - zoning
+  - rezoning
+  - upzoning
+  - downzoning
+  - single-family zoning
+  - single family zoning
+  - exclusionary zoning
+  - inclusionary zoning
+  - inclusionary housing
+  - accessory dwelling unit
+  - ADU
+  - missing middle housing
+  - density bonus
+  - manufactured housing
+  - mobile home
+  - mobile home park
+  - condominium
+  - HOA
+  - homeowners association
+  - short-term rental
+  - short term rental
+  - airbnb
+  - fair housing
+  - housing discrimination
+  - lead paint
+  - habitable
+
+emojis:
+  - emoji: "🏘️"
+    match: ["affordable housing", "public housing", "subsidized housing", "low-income housing", "low income housing", "housing trust fund"]
+  - emoji: "🔑"
+    match: ["tenant", "landlord", "rent", "rental", "lease", "security deposit"]
+  - emoji: "⚖️"
+    match: ["eviction", "just cause eviction", "warranty of habitability", "fair housing", "housing discrimination"]
+  - emoji: "🏚️"
+    match: ["homeless", "homelessness", "unhoused", "encampment", "shelter"]
+  - emoji: "🏗️"
+    match: ["zoning", "rezoning", "upzoning", "inclusionary zoning", "accessory dwelling unit", "ADU", "density bonus"]
+  - emoji: "💵"
+    match: ["section 8", "housing voucher", "rental assistance", "down payment assistance", "LIHTC"]
+  - emoji: "🏦"
+    match: ["mortgage", "foreclosure", "homeownership", "first-time homebuyer", "first time homebuyer"]
+  - emoji: "🛏️"
+    match: ["short-term rental", "short term rental", "airbnb", "manufactured housing", "mobile home"]
+
+digest:
+  thread_title: "🏠 Housing Bills Weekly Digest"
+  topic_phrase: "housing"

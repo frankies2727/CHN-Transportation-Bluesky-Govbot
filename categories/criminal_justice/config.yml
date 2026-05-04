@@ -1,0 +1,153 @@
+# Criminal Justice / Policing bot — best-effort seed. Tune keywords after a
+# week of dry-run output by inspecting which bills get matched and which don't.
+
+name: criminal_justice
+display_name: "Criminal Justice & Policing"
+prompt_topic: "criminal justice and policing, including law enforcement, courts, sentencing, corrections, and reentry"
+default_emoji: "⚖️"
+
+keywords:
+  # Policing / law enforcement
+  - police
+  - policing
+  - police officer
+  - police officers
+  - law enforcement
+  - sheriff
+  - sheriffs
+  - deputy sheriff
+  - state trooper
+  - state troopers
+  - constable
+  - peace officer
+  - peace officers
+  - police misconduct
+  - police accountability
+  - police oversight
+  - civilian oversight
+  - civilian review board
+  - use of force
+  - excessive force
+  - deadly force
+  - chokehold
+  - no-knock warrant
+  - no knock warrant
+  - body camera
+  - body cameras
+  - body-worn camera
+  - dashboard camera
+  - qualified immunity
+  - police union
+  - police training
+  - police certification
+  - decertification
+  - LEOBR
+  - law enforcement officers bill of rights
+  - stop and frisk
+  - stop-and-frisk
+  - racial profiling
+  - traffic stop
+  - pretextual stop
+  - SWAT
+  - militarization
+
+  # Courts / prosecution / defense
+  - prosecutor
+  - prosecutors
+  - district attorney
+  - state's attorney
+  - attorney general
+  - public defender
+  - public defenders
+  - indigent defense
+  - bail
+  - cash bail
+  - pretrial detention
+  - pretrial release
+  - bail reform
+  - speedy trial
+  - grand jury
+  - plea bargain
+  - plea deal
+  - sentencing
+  - mandatory minimum
+  - mandatory minimums
+  - three strikes
+  - sentencing reform
+  - resentencing
+  - habeas corpus
+  - wrongful conviction
+  - exoneration
+  - exonerees
+
+  # Corrections / incarceration / reentry
+  - prison
+  - prisons
+  - jail
+  - jails
+  - incarceration
+  - mass incarceration
+  - inmate
+  - inmates
+  - prisoner
+  - prisoners
+  - department of corrections
+  - corrections officer
+  - correctional officer
+  - solitary confinement
+  - segregated housing
+  - parole
+  - parolee
+  - probation
+  - probationer
+  - reentry
+  - re-entry
+  - record sealing
+  - record expungement
+  - expungement
+  - clean slate
+  - ban the box
+  - voting rights restoration
+  - felony disenfranchisement
+  - juvenile justice
+  - juvenile detention
+  - youth incarceration
+  - school-to-prison pipeline
+  - school to prison pipeline
+
+  # Crime / offenses
+  - hate crime
+  - hate crimes
+  - domestic violence
+  - human trafficking
+  - drug possession
+  - controlled substance
+  - decriminalization
+
+emojis:
+  - emoji: "👮"
+    match: ["police", "policing", "police officer", "law enforcement", "sheriff", "state trooper", "peace officer"]
+  - emoji: "📹"
+    match: ["body camera", "body cameras", "body-worn camera", "dashboard camera"]
+  - emoji: "🚓"
+    match: ["traffic stop", "pretextual stop", "stop and frisk", "stop-and-frisk", "racial profiling", "SWAT", "militarization"]
+  - emoji: "⚖️"
+    match: ["prosecutor", "district attorney", "state's attorney", "public defender", "indigent defense", "grand jury", "plea bargain"]
+  - emoji: "💰"
+    match: ["bail", "cash bail", "bail reform"]
+  - emoji: "📜"
+    match: ["sentencing", "mandatory minimum", "three strikes", "sentencing reform", "resentencing", "habeas corpus"]
+  - emoji: "🏛️"
+    match: ["wrongful conviction", "exoneration", "exonerees"]
+  - emoji: "🔒"
+    match: ["prison", "jail", "incarceration", "inmate", "prisoner", "department of corrections", "solitary confinement"]
+  - emoji: "🚪"
+    match: ["parole", "probation", "reentry", "re-entry", "record sealing", "expungement", "clean slate", "ban the box"]
+  - emoji: "🧒"
+    match: ["juvenile justice", "juvenile detention", "youth incarceration", "school-to-prison pipeline", "school to prison pipeline"]
+  - emoji: "🛡️"
+    match: ["qualified immunity", "police accountability", "police oversight", "civilian oversight", "civilian review board"]
+
+digest:
+  thread_title: "⚖️ Criminal Justice & Policing Bills Weekly Digest"
+  topic_phrase: "criminal justice and policing"
