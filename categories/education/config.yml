@@ -1,0 +1,154 @@
+# Education bot — best-effort seed. Tune keywords after a week of dry-run
+# output by inspecting which bills get matched and which don't.
+
+name: education
+display_name: "Education"
+prompt_topic: "education policy, including K-12 schools, higher education, school funding, curriculum, and student rights"
+default_emoji: "🎓"
+
+keywords:
+  - education
+  - public education
+  - K-12
+  - K through 12
+  - public school
+  - public schools
+  - school district
+  - school districts
+  - charter school
+  - charter schools
+  - magnet school
+  - private school
+  - private schools
+  - parochial school
+  - religious school
+  - school choice
+  - school voucher
+  - school vouchers
+  - education savings account
+  - ESA program
+  - homeschool
+  - homeschooling
+  - home schooling
+  - school funding
+  - per-pupil funding
+  - per pupil funding
+  - school finance
+  - foundation aid
+  - state aid to education
+  - title I
+  - special education
+  - IDEA
+  - individualized education program
+  - IEP
+  - 504 plan
+  - english learner
+  - english language learner
+  - ELL
+  - bilingual education
+  - dual language
+  - curriculum
+  - curricula
+  - standards of learning
+  - common core
+  - critical race theory
+  - book ban
+  - book bans
+  - banned books
+  - sex education
+  - sex ed
+  - comprehensive sex education
+  - school library
+  - school libraries
+  - librarian
+  - librarians
+  - teacher
+  - teachers
+  - teacher pay
+  - teacher salary
+  - teacher shortage
+  - teacher certification
+  - teacher tenure
+  - school board
+  - school boards
+  - superintendent
+  - principal
+  - paraprofessional
+  - paraeducator
+  - school counselor
+  - school nurse
+  - school psychologist
+  - chronic absenteeism
+  - truancy
+  - dropout
+  - graduation rate
+  - high school diploma
+  - GED
+  - early childhood education
+  - pre-K
+  - preK
+  - prekindergarten
+  - pre-kindergarten
+  - universal pre-K
+  - kindergarten
+  - childcare
+  - child care
+  - higher education
+  - college
+  - colleges
+  - community college
+  - community colleges
+  - university
+  - universities
+  - public university
+  - state university
+  - financial aid
+  - student loan
+  - student loans
+  - student debt
+  - tuition
+  - in-state tuition
+  - tuition assistance
+  - pell grant
+  - pell grants
+  - FAFSA
+  - dual enrollment
+  - early college
+  - apprenticeship
+  - vocational education
+  - career and technical education
+  - CTE
+  - workforce development
+  - school discipline
+  - school resource officer
+  - SRO
+  - corporal punishment
+  - school safety
+  - school shooting
+  - school threat assessment
+
+emojis:
+  - emoji: "🏫"
+    match: ["public school", "school district", "K-12", "charter school", "magnet school", "private school"]
+  - emoji: "📚"
+    match: ["curriculum", "curricula", "common core", "book ban", "banned books", "school library"]
+  - emoji: "👩‍🏫"
+    match: ["teacher", "teacher pay", "teacher salary", "teacher shortage", "teacher tenure", "paraeducator", "paraprofessional"]
+  - emoji: "🎓"
+    match: ["higher education", "college", "university", "community college", "graduation"]
+  - emoji: "💸"
+    match: ["student loan", "student debt", "tuition", "financial aid", "pell grant", "FAFSA"]
+  - emoji: "🧒"
+    match: ["pre-K", "preK", "prekindergarten", "pre-kindergarten", "universal pre-K", "kindergarten", "childcare", "child care", "early childhood"]
+  - emoji: "♿"
+    match: ["special education", "IEP", "504 plan", "IDEA"]
+  - emoji: "🗳️"
+    match: ["school board", "superintendent"]
+  - emoji: "🛠️"
+    match: ["vocational education", "career and technical education", "CTE", "apprenticeship", "workforce development"]
+  - emoji: "🚨"
+    match: ["school resource officer", "SRO", "school safety", "school discipline", "school shooting"]
+
+digest:
+  thread_title: "🎓 Education Bills Weekly Digest"
+  topic_phrase: "education"
