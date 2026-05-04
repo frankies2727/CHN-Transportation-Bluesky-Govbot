@@ -807,12 +807,36 @@ def _b_wv(session, ident):  # verified — wvlegislature.gov Bill_Status form
             f"?input={num}&year={year}&sessiontype={sessiontype}&btype={btype}")
 
 
+def _b_ri(session, ident):  # verified — webserver.rilegislature.gov BillText
+    # RI's per-bill landing page is the bill text view, served at:
+    #   https://webserver.rilegislature.gov/BillText{YY}/{Chamber}Text{YY}/{TYP}{NUM}.htm
+    # YY = 2-digit calendar year, Chamber = "House"/"Senate", TYP = "H"/"S".
+    # Page shows title, sponsors, intro date, committee referral, and full
+    # bill text. There's no public per-bill status URL with an action log;
+    # this is the canonical detail page on rilegislature.gov.
+    #
+    # Only HB/SB are handled — the URL scheme for HR/SR/HJR/SJR resolutions
+    # on RI's site is undocumented; let those fall back to the homepage
+    # rather than 404 readers into a broken link.
+    year = _first_year(session)
+    typ, num = _split_ident(ident)
+    if not (year and typ and num):
+        return None
+    if typ not in ("HB", "SB"):
+        return None
+    chamber = "House" if typ == "HB" else "Senate"
+    body = typ[0]
+    yy = year[-2:]
+    return (f"https://webserver.rilegislature.gov/BillText{yy}/"
+            f"{chamber}Text{yy}/{body}{num}.htm")
+
+
 STATE_BILL_URL_BUILDERS = {
     "FL": _b_fl, "IN": _b_in, "IA": _b_ia, "MI": _b_mi, "NY": _b_ny,
     "MA": _b_ma, "OH": _b_oh, "WI": _b_wi, "NC": _b_nc, "NJ": _b_nj,
     "CT": _b_ct, "MO": _b_mo, "MN": _b_mn, "NM": _b_nm, "HI": _b_hi,
     "KS": _b_ks, "WV": _b_wv, "PA": _b_pa, "AK": _b_ak, "OR": _b_or,
-    "CO": _b_co, "WA": _b_wa, "TN": _b_tn,
+    "CO": _b_co, "WA": _b_wa, "TN": _b_tn, "RI": _b_ri,
 }
 
 
