@@ -5,6 +5,7 @@
     "MN|HF 1|2025-06-09|Amendments offered",
     "MN|HF 1|2025-06-09|Bill was passed",
     "MN|HF 1|2025-06-09|House rule 2.30, Questions of Order",
+    "MN|HF 1|2025-06-09|Third reading",
     "MN|HF 1|2025-06-09|Third reading Passed",
     "MN|HF 1|2025-06-09|Urgency declared rules suspended",
     "MN|HF 1|2025-06-12|Presentment date 06/12/25",
@@ -16,6 +17,7 @@
     "TN|SB 6002|2025-02-10|Signed by Senate Speaker",
     "TN|SB 6002|2025-02-25|Pub. Ch. 1",
     "WA|SB 5104|2025-04-05|Executive action taken in the House Comm",
+    "WA|SB 5104|2025-04-05|Minority; without recommendation.",
     "WA|SB 5104|2025-04-14|Third reading, passed; yeas, 59; nays, 3",
     "WA|SB 5104|2025-04-18|President signed.",
     "WA|SB 5104|2025-04-18|Speaker signed.",
@@ -25,5 +27,5 @@
     "WV|HB 4059|2026-01-14|To Health and Human Resources",
     "WV|HB 4148|2026-01-14|To Government Organization"
   ],
-  "last_run": "2026-05-03T12:43:59.092516+00:00"
+  "last_run": "2026-05-04T01:29:22.505906+00:00"
 }
