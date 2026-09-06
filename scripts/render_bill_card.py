@@ -58,8 +58,9 @@ INNER_W = INNER1 - INNER0       # = 888
 # "dark" — sharing the same layout; the poster picks one per run. Each theme
 # bundles the five tones the layout needs: card body, headline/value ink, the
 # muted summary/footer tone, the tile background, and the tile label tone.
-LABEL_SIZE = 14            # STATUS/DATE label size
-TILE_VALUE_SIZE = 32       # STATUS/DATE value size
+LABEL_SIZE = 13            # STATUS/DATE label size
+TILE_VALUE_SIZE = 27       # STATUS/DATE value size (small enough for the full
+                           # date, e.g. "September 3, 2026", to fit uncut)
 DEFAULT_ACCENT = (37, 99, 235)  # govbot blue fallback
 
 
