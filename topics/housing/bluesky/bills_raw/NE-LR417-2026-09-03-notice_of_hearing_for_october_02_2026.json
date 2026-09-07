@@ -1,0 +1,32 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"legislature\"}",
+    "identifier": "LR417",
+    "legislative_session": "109",
+    "title": "Interim study to examine innovative approaches to housing development, financing, and ownership in Nebraska"
+  },
+  "id": "LR417",
+  "log": {
+    "action": {
+      "description": "Notice of hearing for October 02, 2026",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"legislature\"}",
+      "occurred_at": "2026-09-03",
+      "session_id": "109",
+      "sources": [
+        {
+          "url": "https://nebraskalegislature.gov/bills/search_by_date.php?SessionDay=2026"
+        },
+        {
+          "url": "https://nebraskalegislature.gov/bills/view_bill.php?DocumentID=65744"
+        }
+      ]
+    },
+    "bill_id": "LR417"
+  },
+  "sources": {
+    "bill": "ne-legislation/country:us/state:ne/sessions/109/bills/LR417/metadata.json",
+    "log": "ne-legislation/country:us/state:ne/sessions/109/bills/LR417/logs/20260903T000000Z_notice_of_hearing_for_october_02_2026.json"
+  },
+  "timestamp": "20260903T000000Z"
+}

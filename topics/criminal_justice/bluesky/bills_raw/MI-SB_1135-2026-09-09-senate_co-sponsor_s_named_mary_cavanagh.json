@@ -1,0 +1,34 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"upper\"}",
+    "identifier": "SB 1135",
+    "legislative_session": "2025-2026",
+    "subject": [
+      "Corrections: employees",
+      "Retirement: state employees",
+      "Retirement: state police"
+    ],
+    "title": "Retirement: state employees; membership in the retirement system of certain law enforcement officers first hired after certain date; provide for, and allow for purchasing service credit for certain law enforcement officers' service under the state employees' retirement system. Amends 1986 PA 182 (MCL 38.1601 - 38.1674) by adding secs. 24c, 24d, 24e & 24f.   TIE BAR WITH: SB 1133'26,  SB 1134'26"
+  },
+  "id": "SB 1135",
+  "log": {
+    "action": {
+      "description": "SENATE CO-SPONSOR(S) NAMED: MARY CAVANAGH",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"upper\"}",
+      "occurred_at": "2026-09-09",
+      "session_id": "2025-2026",
+      "sources": [
+        {
+          "url": "https://legislature.mi.gov/Bills/Bill?ObjectName=2026-SB-1135"
+        }
+      ]
+    },
+    "bill_id": "SB 1135"
+  },
+  "sources": {
+    "bill": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/SB1135/metadata.json",
+    "log": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/SB1135/logs/20260909T000000Z_senate_cosponsors_named_mary_cavanagh.json"
+  },
+  "timestamp": "20260909T000000Z"
+}
