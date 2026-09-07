@@ -1,0 +1,38 @@
+{
+  "bill": {
+    "abstracts": [
+      {
+        "abstract": "Existing law, the California Refinery and Chemical Plant Worker Safety Act of 1990, requires the Occupational Safety and Health Standards Board and the Division of Occupational Safety and Health to promote worker safety through implementation of training and process safety management practices in refineries, chemical plants, and other appropriate facilities, including by adopting process safety management standards and regulations. The act defines \"process safety management\" and other terms for its purposes. The act also requires an employer to develop and maintain written safety information, emergency action plans, operating procedures, procedures to manage changes, and inspection and testing programs.\n\nThis bill would require an employer, in consultation with employees and employee representatives, to develop, implement, and maintain a written plan to effectively provide for employee participation in all process safety management elements. The bill would also require, on or before April 1, 2027, an employer, in consultation with employee and employee representatives, to develop and implement stop work procedures and procedures for reporting and responding to hazards, as specified. The bill would require an employer to document specific information relating to a partial or complete shut down of an operation or process and reports of hazards. The bill would provide how employees who are and who are not represented by an authorized collective bargaining agent participate in the development of these plans and procedures.",
+        "note": "summary"
+      }
+    ],
+    "from_organization": "~{\"classification\": \"upper\"}",
+    "identifier": "SB966",
+    "legislative_session": "20252026",
+    "subject": [
+      "Refineryandchemicalplants"
+    ],
+    "title": "Refinery and chemical plants."
+  },
+  "id": "SB966",
+  "log": {
+    "action": {
+      "description": "Ordered to inactive file on request of Assembly Member Aguiar-Curry.",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"lower\"}",
+      "occurred_at": "2026-08-31",
+      "session_id": "20252026",
+      "sources": [
+        {
+          "url": "http://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202520260SB966"
+        }
+      ]
+    },
+    "bill_id": "SB966"
+  },
+  "sources": {
+    "bill": "ca-legislation/country:us/state:ca/sessions/20252026/bills/SB966/metadata.json",
+    "log": "ca-legislation/country:us/state:ca/sessions/20252026/bills/SB966/logs/20260831T000000Z_ordered_to_inactive_file_on_request_of_assembly_member_aguiarcurry.json"
+  },
+  "timestamp": "20260831T000000Z"
+}
