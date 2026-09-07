@@ -1,0 +1,29 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HB1442",
+    "legislative_session": "2026",
+    "title": "permitting classification of individuals based on biological sex under certain limited circumstances."
+  },
+  "id": "HB1442",
+  "log": {
+    "action": {
+      "description": "Veto Sustained 08/19/2026: RC 165-149 Lacking Necessary Two-Thirds Vote  HJ 16",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"lower\"}",
+      "occurred_at": "2026-08-19",
+      "session_id": "2026",
+      "sources": [
+        {
+          "url": "https://gc.nh.gov/bill_Status/billinfo.aspx?id=1937&inflect=2"
+        }
+      ]
+    },
+    "bill_id": "HB1442"
+  },
+  "sources": {
+    "bill": "nh-legislation/country:us/state:nh/sessions/2026/bills/HB1442/metadata.json",
+    "log": "nh-legislation/country:us/state:nh/sessions/2026/bills/HB1442/logs/20260819T000000Z_veto_sustained_08192026_rc_165149_lacking_necessary_twothirds_vote_hj_16.json"
+  },
+  "timestamp": "20260819T000000Z"
+}

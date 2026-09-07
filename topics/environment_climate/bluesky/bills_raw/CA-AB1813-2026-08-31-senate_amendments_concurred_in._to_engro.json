@@ -1,0 +1,44 @@
+{
+  "bill": {
+    "abstracts": [
+      {
+        "abstract": "Existing law vests the Public Utilities Commission (PUC) with regulatory authority over public utilities, including electrical corporations. Existing law requires the PUC, on or before March 31, 2024, to evaluate each customer renewable energy subscription program to determine if the program meets specified goals and to determine whether it would be beneficial to ratepayers to establish a new tariff or program for an electrical corporation, or modify an existing tariff or program administered by an electrical corporation, to establish a community renewable energy program, as provided. If the PUC determines that it would be beneficial to ratepayers to establish the community renewable energy program, existing law requires the PUC, on or before July 1, 2024, to establish the program and require each electrical corporation to participate in the program.\n\nThis bill would revise the requirements of the customer renewable energy subscription program, as provided, among other things, to promote participation by low-income customers at levels commensurate with the opportunity provided to certain customer-generators, to provide bill credits to subscribers based on the avoided costs of community renewable energy generators, as defined, participating in the program if the community renewable energy generator is determined to be a load-modifying resource, to require all community renewable energy generators participating in the program to have no more than 5 megawatts of generation capacity and no more than 5 megawatts of energy storage, and to limit the total program capacity to 4 gigawatts or end the enrollment of new community renewable energy generators in the program after 7 years, whichever occurs first. The bill would require the State Energy Resources Conservation and Development Commission (Energy Commission) , in a public process that includes opportunity for public comment, to evaluate the load-modifying potential of community renewable energy generators, as specified, and, if the evaluation finds that community renewable energy generators have load-modifying potential, to, on or before December 1, 2027, in a public process with opportunity for public comment, identify attributes that the Energy Commission would expect a community renewable energy generator to meet in order to be classified by the PUC as a load-modifying resource, as provided. The bill would require the PUC, within 180 days following the identification of attributes by the Energy Commission, to adopt or modify a customer renewable energy subscription program consistent with the revisions to the program made by the bill, and would require the PUC to establish in the program a mechanism to determine whether community renewable energy generators are load-modifying resources, as provided.\n\nExisting law requires the PUC, within 24 months of establishing a community renewable energy program and annually thereafter for the duration of the program, to submit to the Legislature a report on the facilities deployed and customers subscribed, as provided.\n\nThis bill would instead require the PUC, within 24 months of the adoption or modification of a customer renewable energy subscription program and annually thereafter for the duration of the program, to submit to the Legislature a report on the community renewable energy generators participating in the program and customers subscribed. The bill would repeal this requirement on January 1, 2034.\n\nUnder existing law, a violation of an order, decision, rule, direction, demand, or requirement of the PUC is a crime.\n\nBecause a violation of a PUC action implementing this bill's requirements would be a crime, the bill would impose a state-mandated local program.\n\nThe California Constitution requires the state to reimburse local agencies and school districts for certain costs mandated by the state. Statutory provisions establish procedures for making that reimbursement.\n\nThis bill would provide that no reimbursement is required by this act for a specified reason.",
+        "note": "summary"
+      }
+    ],
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "AB1813",
+    "legislative_session": "20252026",
+    "subject": [
+      "Electricity",
+      "customerrenewableenergysubscriptionprogram"
+    ],
+    "title": "Electricity: customer renewable energy subscription program."
+  },
+  "id": "AB1813",
+  "log": {
+    "action": {
+      "classifications": [
+        "amendment-passage",
+        "committee-passage",
+        "committee-passage-favorable"
+      ],
+      "description": "Senate amendments concurred in. To Engrossing and Enrolling.",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"lower\"}",
+      "occurred_at": "2026-08-31",
+      "session_id": "20252026",
+      "sources": [
+        {
+          "url": "http://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202520260AB1813"
+        }
+      ]
+    },
+    "bill_id": "AB1813"
+  },
+  "sources": {
+    "bill": "ca-legislation/country:us/state:ca/sessions/20252026/bills/AB1813/metadata.json",
+    "log": "ca-legislation/country:us/state:ca/sessions/20252026/bills/AB1813/logs/20260831T000000Z_senate_amendments_concurred_in_to_engrossing_and_enrolling.json"
+  },
+  "timestamp": "20260831T000000Z"
+}

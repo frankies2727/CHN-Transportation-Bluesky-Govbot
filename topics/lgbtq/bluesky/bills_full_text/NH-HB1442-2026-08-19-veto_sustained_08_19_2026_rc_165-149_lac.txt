@@ -1,0 +1,226 @@
+5Mar2026...1054h
+2026SESSION
+26-2729
+12/06
+1442-FN
+HOUSEBILL
+ANACT limiting the use of certain facilities on the basis of sex and redefining the term
+"genderidentity."
+Peternel, Carr. 6; Rep. McGrath, Rock. 40; Rep. Popovici-Muller, Rock. 17; Rep.
+Sabourin dit Choiniere, Rock. 30; Rep. Mazur, Hills. 44; Rep. DeVito, Rock. 8;
+Rep.Love,Rock.13;Sen.Birdsell,Dist19;Sen.Avard,Dist12;Sen.Gannon,Dist
+COMMITTEE: Judiciary
+─────────────────────────────────────────────────────────────────
+AMENDEDANALYSIS
+Thisbill:
+I. Modifiesstatutoryconstructionoftheterm"genderidentity".
+II. Requires bathrooms and locker rooms in public schools and municipally owned buildings to
+beusedonthebasisofsex.
+III. Permits owners and operators of places of public accommodation to restrict the use of
+bathroomsandlockerroomsonthebasisofsex.
+IV. Requires that inmates in New Hampshire correctional facilities be housed separately on the
+basisoftheirsex.
+V. Modifies the enforcement of civil rights to provide protections on the basis of gender identity
+onlyforcertainpurposes.
+---------------------------------------------------------------------------
+Explanation: Matteraddedtocurrentlawappearsinbolditalics.
+Matterremovedfromcurrentlawappears[inbracketsandstruckthrough.]
+Matterwhichiseither(a)allnewor(b)repealedandreenactedappearsinregulartype.
+
+5Mar2026...1054h 26-2729
+12/06
+STATEOFNEWHAMPSHIRE
+IntheYearofOurLordTwoThousandTwenty-Six
+ANACT limiting the use of certain facilities on the basis of sex and redefining the term
+"genderidentity."
+BeitEnactedbytheSenateandHouseofRepresentativesinGeneralCourtconvened:
+1 StatementofFindings. Thegeneralcourtfindsthat:
+I. Historically, society has protected females by reserving certain spaces for their exclusive
+useandofferingcertainservicesonlytowomenandchildren.
+II. The inclusion of gender identity in the Civil Rights Act and the New Hampshire law
+againstdiscriminationwasnotintendedtoremoveprotectionsforfemales.
+III. Thefollowingstatutorychangesaretobeundertakenbythegeneralcourt:
+(a) Include "female" and "male" in the definitions section of New Hampshire state law,
+using biology to determine the legal categories of female and male. To address intersex persons, the
+language references the SRY gene which is required during fetal development to develop male
+anatomy. To remove the need for genetic testing, those persons who do not meet the legal definition
+offemalewillbeconsideredmale.
+(b) Amend the definition of "gender-identity" to provide clarification on what is
+considered "improper purpose" for assertion of gender identity. Accessing spaces or services offered
+onlytofemalesonthebasisofgenderidentityshallbedefinedasanimproperpurpose.
+(c) Allinmatesshallbehousedbaseduponsex.
+2 StatutoryConstruction;Number;Gender;SexAdded. AmendRSA21:3toreadasfollows:
+21:3 Number; Gender. Words importing the singular number may extend and be applied to
+several persons or things; words importing the plural number may include the singular; and words
+importing the masculine gender may extend and be applied to females. "Sex," "biologic sex," and
+"biologicalsex"shallmeanmaleorfemale.
+I. "Female" is defined as an individual with a reproductive system of the type which
+in normal function produce ova, and specifically defined as an individual who lacks a
+functional Y chromosome. A functional Y chromosome is a Y chromosome which expressed
+the SRY gene during fetal development. A person with 46,XX/46,XY and functional ovarian
+tissueisafemale.
+II. "Male" is defined as an individual with a reproductive system of the type which
+in normal function produce sperm. Male shall include any person who does not meet the
+definitionoffemale.
+III. The terms "woman" and "girl" shall mean "female" and the terms "man" and
+"boy"shallmean"male":
+
+-Page2-
+(a) Forthepurposesofseparatingpeoplebysexorgenderforreasonsofmodesty
+andsafety;
+(b) Whenreferringto"womenofchildbearingage"orsimilar;
+(c) ForfemaleinspectorsasdesignatedinRSA277:33;
+(d) Forprogramsandservicesintendedatthetimeofformationtoservefemales
+totheexclusionofmalesincludingbutnotlimitedto:
+(1) Women'shealthcareasdescribedRSA417-D;
+(2) For women housed in the department of corrections established in RSA
+21-H;
+(3) Women,infantsandchildrenassistance;
+(4) Women'sorgirl'ssports;and
+(5) Bathrooms,lockerrooms,andchangingrooms.
+IV. In common use, an individual's sex is described by the sex listed on an
+individual's official birth certificate issued at or near the time of the individual’s birth
+unless there is medical reason to support the claim that a person who is male or female as
+describedabovewasnotidentifiedasthecorrectsexonhisorherbirthcertificate.
+V. Except as otherwise provided in this section, gender-specific [Gender-specific]
+terms relating to the marital relationship or familial relationships, including without limitation,
+"spouse," "family," "marriage," "immediate family," "dependent," "next of kin," "man," "woman,"
+"groom," "bride," "husband," "wife," "widow," or "widower," shall be construed to be gender-neutral
+for all purposes throughout New Hampshire law, whether in statute, state administrative or court
+rule,policy,commonlaw,oranyothersourceofcivilstatelaw.
+3 StatutoryConstruction;GenderIdentityModified. AmendRSA21:54toreadasfollows:
+21:54 Gender Identity. "Gender identity" means aperson's gender-related identity, appearance,
+or behavior, whether or not that gender-related identity, appearance, or behavior is different from
+thattraditionallyassociatedwiththeperson'sphysiologyor[assigned]sex[atbirth]. Gender-related
+identity may be shown by providing evidence including, but not limited to, medical history, care or
+treatment of the gender-related identity, consistent and uniform assertion of the gender-related
+identity, or any other evidence that the gender-related identity is sincerely held as part of a person's
+core identity provided, however, that gender-related identity shall not be asserted for any improper
+purpose. Notwithstanding any other laws including but not limited to RSA 193, sections 38
+through 40, RSA 354-A, and RSA 354-B, it shall be considered improper purpose to assert
+that gender identity provides access to any place or service provided or offered exclusively
+tofemalesormales.
+4 StateCommissionforHumanRights;Definitions;GenderIdentityModified. AmendRSA354-
+A:2,XIV-etoreadasfollows:
+
+-Page3-
+XIV-e. "Gender identity" means a person's gender-related identity, appearance, or behavior,
+whether or not that gender-related identity, appearance, or behavior is different from that
+traditionally associated with the person's physiology or [assigned] sex [at birth]. Gender-related
+identity may be shown by providing evidence including, but not limited to, medical history, care or
+treatment of the gender-related identity, consistent and uniform assertion of the gender-related
+identity, or any other evidence that the gender-related identity is sincerely held as part of a person's
+core identity provided, however, that gender-related identity shall not be asserted for any improper
+purpose. Notwithstanding any other laws including but not limited to RSA 193, sections 38
+through 40, RSA 354-A, and RSA 354-B, it shall be considered improper purpose to assert
+that gender identity provides access to any place or service provided or offered exclusively
+tofemalesormales.
+5 New Section; School Bathrooms and Locker Rooms; Use byDesignated Biological Sex. Amend
+RSA189byinsertingaftersection16-athefollowingnewsection:
+189:16-b School Bathrooms and Locker Rooms; Use by Designated Biological Sex.
+Notwithstanding any other provision of law, with the exception of RSA 21:3, RSA 21:54, and
+paragraph II below, all multi-user facilities, including bathrooms, restrooms, and locker rooms
+located in any public school, chartered public school, public academy, or other school building
+governedbythischaptershallbeusedbasedontheindividual’sbiologicalsex.
+I. Forthepurposesofthissection:
+(a) "Sex"shallmeaneitherfemaleormaleasdefinedbyRSA21:3.
+(b) "Multi-user facility" shall mean any bathroom, restroom, or locker room that is
+accessibletomultipleindividualsforuseatthesametime.
+(c) "All-gender"shallmeananyfacilitywithaccessnotrestrictedbysex.
+II. Adoption or enforcement of a policy pursuant to this section shall not be deemed
+discriminationunderRSA354-Aoranyotherstatelaw.
+6 New Section; Municipal Bathrooms and Locker Rooms; Use by Designated Biological Sex.
+AmendRSA31byinsertingaftersection103-bthefollowingnewsection:
+31:103-c Municipal Bathrooms and Locker Rooms; Use by Designated Biological Sex.
+Notwithstanding any other provision of law, with the exception of RSA 21:3, RSA 21:54, and
+paragraph II below, all multi-user facilities, including bathrooms, restrooms, and locker rooms
+located in buildings owned, leased, or operated by any municipality shall be used based on the
+individual’sbiologicalsex.
+I. Forthepurposesofthissection:
+(a) "Sex"shallmeaneitherfemaleormaleasdefinedbyRSA21:3.
+(b) "Multi-user facility" shall mean any bathroom, restroom, or locker room that is
+accessibletomultipleindividualsforuseatthesametime.
+(c) "All-gender"shallmeananyfacilitywithaccessnotrestrictedbysex.
+
+-Page4-
+II. Adoption or enforcement of a policy pursuant to this section shall not be deemed
+discriminationunderRSA354-Aoranyotherstatelaw.
+7 New Section; Places of Public Accommodation; Bathrooms and Locker Rooms; Use by
+DesignatedBiologicalSex. AmendRSA354byinsertingaftersection17-athefollowingnewsection:
+354-A:17-b Bathrooms and Locker Rooms; Use by Designated Biological Sex. Notwithstanding
+any other provision of law with the exception of RSA 21:3 and RSA 21:54, the owner or operator of
+any place of public accommodation, as defined in RSA 354-A:2, XIV, may require that all multi-user
+bathrooms, restrooms, and locker rooms under their control be used based on the individual’s
+biologicalsex.
+I. Forthepurposesofthissection:
+(a) "Sex"shallmeaneitherfemaleormaleasdefinedbyRSA21:3.
+(b) "Multi-user facility" shall mean any bathroom, restroom, or locker room that is
+accessibletomultipleindividualsforuseatthesametime.
+(c) "All-gender"shallmeananyfacilitywithaccessnotrestrictedbysex.
+II. Adoption or enforcement of a policy pursuant to this section shall not be deemed
+discriminationunderRSA354-Aoranyotherstatelaw.
+8 New Section; Inmates Designated By Biological Sex. Amend RSA 622 by inserting after
+section10thefollowingnewsection:
+622:10-a Inmates Designated by Biological Sex. Notwithstanding any other provision of law,
+inmatesshallbehousedbasedontheindividualinmate'sbiologicalsex.
+I. Forthepurposesofthissection:
+(a) "Inmate"shallmeanapersoncommittedbylawtothecustodyofthecommissionerof
+the department of corrections, a person in pretrial confinement, any person incarcerated in a local
+detentionfacilityoperatedbyacountydepartmentof corrections, orapersonindetentionat apolice
+department.
+(b) "Sex"shallmeaneitherfemaleormaleasdefinedbyRSA21:3.
+II. This section shall apply to all correctional and detention facilities established and
+operatedpursuanttoRSA21-HandRSA30-B.
+9 Civil Rights Act; Enforcement; Gender Identity Restriction. Amend RSA 354-B:1 to read as
+follows:
+354-B:1 CivilRightsEnforcement.
+I. All persons have the right to engage in lawful activities and to exercise and enjoy the
+rights secured by the United States and New Hampshire Constitutions and the laws of the United
+States and New Hampshire without being subject to actual or threatened physical force or violence
+againstthemoranyotherpersonorbyactualorthreateneddamagetoortrespassonpropertywhen
+such actual or threatened conduct is motivated by race, color, religion, national origin, ancestry,
+sexual orientation, sex, gender identity asserted with proper purpose, or disability. "Threatened
+
+-Page5-
+physical force" and "threatened damage to or trespass on property" is a communication, by physical
+conduct or by declaration, of an intent to inflict harm on a person or a person's property by some
+unlawfulactwithapurposetoterrorizeorcoerce.
+II. It shall be unlawful for any person to assert that their gender identity is a sex
+other than that defined in RSA 21:3 for the purposes of accessing places or services
+restrictedonthebasisofsex.
+III. It shall be unlawful for any person to interfere or attempt to interfere with the rights
+securedbythischapter.
+10 EffectiveDate. Thisactshalltakeeffectuponitspassage.
+
+LBA
+26-2729
+3/6/26
+HB1442-FN-FISCALNOTE
+ASAMENDEDBYTHEHOUSE(AMENDMENT#2026-1054h)
+ANACT limiting the use of certain facilities on the basis of sex and redefining the term
+"genderidentity."
+FISCALIMPACT:
+Estimated State Impact
+FY2026 FY2027 FY2028 FY2029
+Revenue $0 $0 $0 $0
+RevenueFund None
+Expenditures* Indeterminable
+FundingSource GeneralFund
+Appropriations* $0 $0 $0 $0
+FundingSource None
+*Expenditure=Costofbill *Appropriation=Authorizedfundingtocovercostofbill
+Estimated Political Subdivision Impact
+FY2026 FY2027 FY2028 FY2029
+CountyRevenue $0 $0 $0 $0
+CountyExpenditures Indeterminable
+LocalRevenue $0 $0 $0 $0
+LocalExpenditures Indeterminable
+METHODOLOGY:
+This bill adds, deletes, or modifies a criminal penalty, or changes statute to which there is a
+penalty for violation. Therefore, this bill may have an impact on the judicial and correctional
+systems, which could affect prosecution, incarceration, probation, and parole costs, for the state,
+as well as county and local governments. A summary of such costs can be found at:
+https://gencourt.state.nh.us/lba/Budget/Fiscal_Notes/JudicialCorrectionalCosts.pdf
+AGENCIESCONTACTED:
+Judicial Branch, Judicial Council, Department of Justice, Department of Corrections, New
+HampshireAssociationofCounties,andNewHampshireMunicipalAssociation

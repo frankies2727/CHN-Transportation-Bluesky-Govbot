@@ -1,0 +1,39 @@
+{
+  "bill": {
+    "abstracts": [
+      {
+        "abstract": "This Act adds requirements for persons who collect single-stream recycling from single and multi-family residential or source-separated customers and requires commercial businesses to assess all wastes and evaluate costs associated with disposal of recyclable materials. The Act also removes responsibilities associated with recycling grants and low interest loans, which are no longer available. The Act adds a new provision to facilitate stakeholder engagement with the Department of Natural Resources and Environmental Control and the Delaware Solid Waste Authority, while removing the establishment and associated responsibilities of the Recycling Public Advisory Council. Section 7 of the Act removes specific civil and administrative penalties, allowing the Department to utilize enforcement authority already established in Chapter 60, Section 6005 and details the responsibilities of the Department and the Authority to provide an annual report to the Governor and General Assembly regarding the status of recycling activities in the state.\r\nThis Act also makes technical corrections to conform existing law to the standards of the Delaware Legislative Drafting Manual.",
+        "note": "synopsis"
+      }
+    ],
+    "from_organization": "~{\"classification\": \"upper\"}",
+    "identifier": "SB 287",
+    "legislative_session": "153",
+    "title": "AN ACT TO AMEND TITLE 7 OF THE DELAWARE CODE RELATING TO SOLID WASTE RECYCLING."
+  },
+  "id": "SB 287",
+  "log": {
+    "action": {
+      "classifications": [
+        "executive-signature"
+      ],
+      "description": "Signed by Governor",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"executive\"}",
+      "occurred_at": "2026-08-26",
+      "session_id": "153",
+      "sources": [
+        {
+          "note": "text/html",
+          "url": "https://legis.delaware.gov/BillDetail?LegislationId=143137"
+        }
+      ]
+    },
+    "bill_id": "SB 287"
+  },
+  "sources": {
+    "bill": "de-legislation/country:us/state:de/sessions/153/bills/SB287/metadata.json",
+    "log": "de-legislation/country:us/state:de/sessions/153/bills/SB287/logs/20260826T000000Z_signed_by_governor.json"
+  },
+  "timestamp": "20260826T000000Z"
+}
