@@ -1,0 +1,35 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HR 10267",
+    "legislative_session": "119",
+    "title": "To improve the safety of the air supply on aircraft, and for other purposes."
+  },
+  "id": "HR 10267",
+  "log": {
+    "action": {
+      "classifications": [
+        "referral-committee"
+      ],
+      "description": "Referred to the House Committee on Transportation and Infrastructure.",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"lower\"}",
+      "occurred_at": "2026-09-03T04:00:00+00:00",
+      "session_id": "119",
+      "sources": [
+        {
+          "url": "https://www.govinfo.gov/bulkdata/BILLSTATUS/119/hr/BILLSTATUS-119hr10267.xml"
+        },
+        {
+          "url": "https://congress.gov/bill/119th-congress/house-bill/10267"
+        }
+      ]
+    },
+    "bill_id": "HR 10267"
+  },
+  "sources": {
+    "bill": "usa-legislation/country:us/state:usa/sessions/119/bills/HR10267/metadata.json",
+    "log": "usa-legislation/country:us/state:usa/sessions/119/bills/HR10267/logs/20260903T040000Z_referred_to_the_house_committee_on_transportation_and_infrastructure.json"
+  },
+  "timestamp": "20260903T040000Z"
+}

@@ -1,0 +1,29 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HD5852",
+    "legislative_session": "194th",
+    "title": "A communication from the Office of the Worcester County District Attorney (see Section 47(d) of Chapter 94C of the General Laws) submitting a report on its law enforcement trust funds for drug rehabilitation, drug education and other drug or neighborhood crime watch programs for fiscal year 2025"
+  },
+  "id": "HD5852",
+  "log": {
+    "action": {
+      "description": "Placed on file",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"lower\"}",
+      "occurred_at": "2026-08-06",
+      "session_id": "194th",
+      "sources": [
+        {
+          "url": "https://malegislature.gov/Bills/194/HD5852"
+        }
+      ]
+    },
+    "bill_id": "HD5852"
+  },
+  "sources": {
+    "bill": "ma-legislation/country:us/state:ma/sessions/194th/bills/HD5852/metadata.json",
+    "log": "ma-legislation/country:us/state:ma/sessions/194th/bills/HD5852/logs/20260806T000000Z_placed_on_file.json"
+  },
+  "timestamp": "20260806T000000Z"
+}
