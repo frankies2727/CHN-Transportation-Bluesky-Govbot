@@ -1,0 +1,36 @@
+{
+  "bill": {
+    "from_organization": "~{\"classification\": \"lower\"}",
+    "identifier": "HB 6265",
+    "legislative_session": "2025-2026",
+    "subject": [
+      "Businesses: other",
+      "Energy: other"
+    ],
+    "title": "Businesses: other; water and electricity usage reporting requirements for data centers; provide for."
+  },
+  "id": "HB 6265",
+  "log": {
+    "action": {
+      "description": "bill electronically reproduced 08/26/2026",
+      "entity_type": "bill",
+      "jurisdiction_id": "~{\"classification\": \"lower\"}",
+      "occurred_at": "2026-08-27",
+      "session_id": "2025-2026",
+      "sources": [
+        {
+          "url": "https://legislature.mi.gov/Bills/Bill?ObjectName=2026-HB-6265"
+        }
+      ]
+    },
+    "bill_id": "HB 6265"
+  },
+  "sources": {
+    "bill": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/HB6265/metadata.json",
+    "log": "mi-legislation/country:us/state:mi/sessions/2025-2026/bills/HB6265/logs/20260827T000000Z_bill_electronically_reproduced_08262026.json"
+  },
+  "timestamp": "20260827T000000Z",
+  "posted_text": "🏢 MI HB 6265 — Data Centers Must Report Water & Energy Use\n\nMichigan data centers could soon have to track and report their water and electricity consumption. Starting March 1, 2028, owners and operators of facilities with one or more buildings housing data center equipment will need to file annual reports with the Michigan Public Service Commission. These reports must detail water sources, electricity use, and the percentage of renewable energy used. ...\n...",
+  "posted_link": "https://legislature.mi.gov/Bills/Bill?ObjectName=2026-HB-6265",
+  "posted_url": "https://x.com/i/web/status/2097388471040249986"
+}
